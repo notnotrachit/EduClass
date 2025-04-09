@@ -63,6 +63,49 @@
       "type": "event"
     },
     {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "quizAddress",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "classAddress",
+          "type": "address"
+        }
+      ],
+      "name": "QuizLinked",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "classQuizzes",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "internalType": "uint256",
@@ -107,6 +150,25 @@
       "name": "createClass",
       "outputs": [],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "classAddress",
+          "type": "address"
+        }
+      ],
+      "name": "getClassQuizzes",
+      "outputs": [
+        {
+          "internalType": "address[]",
+          "name": "",
+          "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -173,6 +235,24 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "classAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "quizAddress",
+          "type": "address"
+        }
+      ],
+      "name": "linkQuizToClass",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {

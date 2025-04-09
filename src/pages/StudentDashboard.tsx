@@ -2,300 +2,651 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  markAttendance,
-  getOwnAttendance,
-  getEligibleClasses,
-} from "@/lib/contractService";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { getEligibleClasses, getLectures, getOwnAttendance, markAttendance, getQuizzes, getQuizzesByLecture, getQuizQuestions, submitQuizAnswers, getQuizResults, getClassQuizzes } from "@/lib/contractService";
 import { useWalletContext } from "@/context/WalletContext";
-import QrScanner from "react-qr-scanner";
-import { motion } from "framer-motion";
+import Popup from "../components/Popup";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { QrCode, CheckCircle, XCircle } from "lucide-react";
+import { BookOpen, FilePieChart } from "lucide-react";
+import TakeQuizForm from "../components/TakeQuizForm";
+import QuizResults from "../components/QuizResults";
 
-interface EnrolledClass {
-  id: string;
-  name: string;
-  teacherName: string;
-  attendancePercentage: number;
-}
-
-interface ClassInfo {
+interface Class {
   classAddress: string;
   name: string;
   symbol: string;
 }
 
+interface Lecture {
+  id: number;
+  topic: string;
+}
+
+interface LecturesByClass {
+  [classAddress: string]: Lecture[];
+}
+
+interface AttendanceByClass {
+  [classAddress: string]: boolean[];
+}
+
+interface Quiz {
+  id: number;
+  title: string;
+  description: string;
+  createdAt: number;
+  expiresAt: number;
+  lectureId: number;
+  isActive: boolean;
+  questionCount: number;
+}
+
+interface QuizContractsByClass {
+  [classAddress: string]: string[];
+}
+
+interface QuizzesByContract {
+  [quizContractAddress: string]: Quiz[];
+}
+
+interface Question {
+  id: number;
+  text: string;
+  options: string[];
+}
+
+interface QuizResult {
+  hasAttempted: boolean;
+  score: number;
+  attemptedAt: number;
+  totalQuestions: number;
+}
+
+interface QuizResultsByContract {
+  [key: string]: QuizResult; // key will be `${quizContractAddress}-${quizId}`
+}
+
+interface PopupContentType {
+  title: string;
+  content: React.ReactNode;
+}
+
 export function StudentDashboard() {
-  const [enrolledClasses, setEnrolledClasses] = useState<EnrolledClass[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState<boolean[]>([]);
-  const [eligibleClasses, setEligibleClasses] = useState<ClassInfo[]>([]);
-  const { provider } = useWalletContext();
-  const [scannedLectureId, setScannedLectureId] = useState<string | null>(null);
-  const [classAddress, setClassAddress] = useState<string | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [isMarkingAttendance, setIsMarkingAttendance] = useState(false);
-  const [isFetchingClasses, setIsFetchingClasses] = useState(false);
-  const [isFetchingAttendance, setIsFetchingAttendance] = useState<{
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [selectedClass, setSelectedClass] = useState<Class | null>(null);
+  const [lecturesByClass, setLecturesByClass] = useState<LecturesByClass>({});
+  const [attendanceByClass, setAttendanceByClass] =
+    useState<AttendanceByClass>({});
+  const [isFetchingLectures, setIsFetchingLectures] = useState<{
     [key: string]: boolean;
   }>({});
-  const [facingMode, setFacingMode] = useState<"environment" | "user">(
-    "environment"
-  );
+  const [isMarkingAttendance, setIsMarkingAttendance] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [popupContent, setPopupContent] = useState<PopupContentType | null>(null);
+  const [confirmationMessage, setConfirmationMessage] = useState("");
+
+  // Quiz related state
+  const [quizContractsByClass, setQuizContractsByClass] = useState<QuizContractsByClass>({});
+  const [quizzesByContract, setQuizzesByContract] = useState<QuizzesByContract>({});
+  const [isFetchingQuizzes, setIsFetchingQuizzes] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const [currentQuizQuestions, setCurrentQuizQuestions] = useState<Question[]>([]);
+  const [isFetchingQuizQuestions, setIsFetchingQuizQuestions] = useState(false);
+  const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
+  const [quizResultsByContract, setQuizResultsByContract] = useState<QuizResultsByContract>({});
+
+  const { provider, address } = useWalletContext();
 
   useEffect(() => {
-    const fetchAttendance = async (classAddress: string) => {
+    const fetchInitialData = async () => {
       try {
-        setIsFetchingAttendance((prev) => ({ ...prev, [classAddress]: true }));
-        const records = await getOwnAttendance(classAddress, provider);
-        setAttendanceRecords(records);
+        setIsLoadingInitialData(true);
+        const eligibleClasses = await getEligibleClasses(address, provider);
+        const formattedClasses = eligibleClasses.map((classData) => ({
+          classAddress: classData[0],
+          name: classData[1],
+          symbol: classData[2]
+        }));
+        
+        setClasses(formattedClasses);
+        
+        if (formattedClasses.length > 0) {
+          // Set the first class as selected by default
+          setSelectedClass(formattedClasses[0]);
+          
+          // Load data for each class
+          for (const classItem of formattedClasses) {
+            await fetchLectures(classItem.classAddress);
+            await fetchAttendance(classItem.classAddress);
+            
+            // Get quiz contracts for this class
+            try {
+              const quizContracts = await getClassQuizzes(classItem.classAddress, provider);
+              setQuizContractsByClass((prev) => ({
+                ...prev,
+                [classItem.classAddress]: quizContracts
+              }));
+              
+              // Fetch quizzes for each contract
+              for (const quizContractAddress of quizContracts) {
+                await fetchQuizzes(quizContractAddress);
+              }
+            } catch (error) {
+              console.error(`Error fetching quiz contracts for class ${classItem.classAddress}:`, error);
+            }
+          }
+        }
       } catch (error) {
-        console.error("Error fetching attendance:", error);
+        console.error("Error fetching initial data:", error);
+        setConfirmationMessage("Failed to load classes. Please refresh the page.");
       } finally {
-        setIsFetchingAttendance((prev) => ({ ...prev, [classAddress]: false }));
+        setIsLoadingInitialData(false);
       }
     };
+    
+    if (address && provider) {
+      fetchInitialData();
+    }
+  }, [address, provider]);
 
-    enrolledClasses.forEach((classItem) => {
-      fetchAttendance(classItem.id);
-    });
-  }, [enrolledClasses, provider]);
-
-  const fetchEligibleClasses = async () => {
+  const fetchLectures = async (classAddress: string) => {
     try {
-      setIsFetchingClasses(true);
-      const studentAddress = await provider.getSigner().getAddress();
-      const classes = await getEligibleClasses(studentAddress, provider);
-      setEligibleClasses(classes);
+      setIsFetchingLectures((prev) => ({ ...prev, [classAddress]: true }));
+      const lecturesList = await getLectures(classAddress, provider);
+      setLecturesByClass((prev) => ({
+        ...prev,
+        [classAddress]: lecturesList,
+      }));
     } catch (error) {
-      console.error("Error fetching classes:", error);
+      console.error("Error fetching lectures:", error);
+      setConfirmationMessage("Failed to fetch lectures. Please try again.");
     } finally {
-      setIsFetchingClasses(false);
+      setIsFetchingLectures((prev) => ({ ...prev, [classAddress]: false }));
     }
   };
 
-  useEffect(() => {
-    fetchEligibleClasses();
-  }, []);
-
-  const handleScan = (data: any | null) => {
-    if (data) {
-      console.log("Scanned data:", data);
-      const parsedData = JSON.parse(data.text);
-      setScannedLectureId(parsedData.lectureId);
-      setClassAddress(parsedData.classAddress);
-      setIsScanning(false);
-    }
-  };
-
-  const handleError = (err: any) => {
-    console.error(err);
-  };
-
-  const handleMarkAttendance = async () => {
-    if (!scannedLectureId || !classAddress) return;
-
+  const fetchAttendance = async (classAddress: string) => {
     try {
-      setIsMarkingAttendance(true);
-      await markAttendance(classAddress, scannedLectureId, provider);
-      alert("Attendance marked successfully!");
-      setScannedLectureId(null);
-      setClassAddress(null);
+      const attendanceList = await getOwnAttendance(classAddress, provider);
+      setAttendanceByClass((prev) => ({
+        ...prev,
+        [classAddress]: attendanceList,
+      }));
+    } catch (error) {
+      console.error("Error fetching attendance:", error);
+      setConfirmationMessage("Failed to fetch attendance. Please try again.");
+    }
+  };
+
+  const handleMarkAttendance = async (lectureId: number, classAddress: string) => {
+    try {
+      setIsMarkingAttendance((prev) => ({ ...prev, [`${classAddress}-${lectureId}`]: true }));
+      await markAttendance(classAddress, lectureId, provider);
+      setConfirmationMessage("Attendance marked successfully!");
+      
+      // Update the attendance data
+      await fetchAttendance(classAddress);
     } catch (error) {
       console.error("Error marking attendance:", error);
-      alert("Failed to mark attendance. Please try again.");
+      setConfirmationMessage("Failed to mark attendance. Please try again.");
     } finally {
-      setIsMarkingAttendance(false);
+      setIsMarkingAttendance((prev) => ({ ...prev, [`${classAddress}-${lectureId}`]: false }));
     }
   };
 
-  const handleScanButtonClick = () => {
-    setIsScanning((prev) => !prev);
-    if (isScanning) {
-      setScannedLectureId(null);
-      setClassAddress(null);
+  // Quiz functionality
+  const fetchQuizzes = async (quizContractAddress: string) => {
+    try {
+      setIsFetchingQuizzes((prev) => ({ ...prev, [quizContractAddress]: true }));
+      const quizzesList = await getQuizzes(quizContractAddress, provider);
+      setQuizzesByContract((prev) => ({
+        ...prev,
+        [quizContractAddress]: quizzesList,
+      }));
+    } catch (error) {
+      console.error(`Error fetching quizzes for contract ${quizContractAddress}:`, error);
+      setConfirmationMessage("Failed to fetch quizzes. Please try again.");
+    } finally {
+      setIsFetchingQuizzes((prev) => ({ ...prev, [quizContractAddress]: false }));
     }
   };
 
-  const toggleCamera = () => {
-    setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
+  const handleTakeQuiz = async (quiz: Quiz, quizContractAddress: string) => {
+    try {
+      setIsFetchingQuizQuestions(true);
+      
+      // First, check if the student has already taken this quiz
+      const result = await getQuizResults(
+        quizContractAddress,
+        quiz.id,
+        address,
+        provider
+      );
+      
+      if (result.hasAttempted) {
+        // Show results instead of taking the quiz again
+        showQuizResults(quiz, result);
+        return;
+      }
+      
+      // Fetch questions for the quiz
+      const questions = await getQuizQuestions(
+        quizContractAddress,
+        quiz.id,
+        provider
+      );
+      
+      setCurrentQuizQuestions(questions);
+      
+      // Open the quiz taking popup
+      setPopupContent({
+        title: `Quiz: ${quiz.title}`,
+        content: (
+          <TakeQuizForm
+            quiz={quiz}
+            questions={questions}
+            onSubmit={(answers) => handleSubmitQuiz(quiz.id, answers, quizContractAddress)}
+            isSubmitting={isSubmittingQuiz}
+          />
+        ),
+      });
+      setIsPopupOpen(true);
+    } catch (error) {
+      console.error("Error preparing quiz:", error);
+      setConfirmationMessage("Failed to load quiz questions. Please try again.");
+    } finally {
+      setIsFetchingQuizQuestions(false);
+    }
   };
 
-  return (
-    <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen lg:px-36">
-      <motion.h1
-        className="text-4xl font-bold mb-8 text-indigo-800 text-center"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        Student Dashboard
-      </motion.h1>
+  const handleSubmitQuiz = async (quizId: number, answers: number[], quizContractAddress: string) => {
+    try {
+      setIsSubmittingQuiz(true);
+      
+      // Submit the quiz answers
+      await submitQuizAnswers(
+        quizContractAddress,
+        quizId,
+        answers,
+        provider
+      );
+      
+      // Get the results
+      const result = await getQuizResults(
+        quizContractAddress,
+        quizId,
+        address,
+        provider
+      );
+      
+      // Store the result
+      setQuizResultsByContract((prev) => ({
+        ...prev,
+        [`${quizContractAddress}-${quizId}`]: result
+      }));
+      
+      // Find the quiz details
+      const quiz = Object.values(quizzesByContract)
+        .flatMap(quizzes => quizzes)
+        .find(q => q.id === quizId);
+      
+      if (quiz) {
+        // Show the results
+        showQuizResults(quiz, result);
+      } else {
+        setIsPopupOpen(false);
+        setConfirmationMessage("Quiz submitted successfully!");
+      }
+    } catch (error) {
+      console.error("Error submitting quiz:", error);
+      setConfirmationMessage("Failed to submit quiz. Please try again.");
+    } finally {
+      setIsSubmittingQuiz(false);
+    }
+  };
 
-      <Tabs defaultValue="attendance" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-8">
-          <TabsTrigger value="attendance">Attendance</TabsTrigger>
-          <TabsTrigger value="classes">Your Classes</TabsTrigger>
-        </TabsList>
+  const showQuizResults = (quiz: Quiz, result: QuizResult) => {
+    setPopupContent({
+      title: `Quiz Results: ${quiz.title}`,
+      content: (
+        <QuizResults
+          quizTitle={quiz.title}
+          score={result.score}
+          totalQuestions={result.totalQuestions}
+          attemptedAt={new Date(result.attemptedAt)}
+        />
+      ),
+    });
+    setIsPopupOpen(true);
+  };
 
-        <TabsContent value="attendance">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <Card className="mb-8 bg-white/80 backdrop-blur-sm shadow-xl">
-              <CardHeader>
-                <CardTitle className="text-2xl text-indigo-700 flex items-center">
-                  <QrCode className="mr-2" /> Scan Attendance
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col items-center space-y-4">
-                  <Button
-                    onClick={handleScanButtonClick}
-                    className={`${
-                      isScanning
-                        ? "bg-red-600 hover:bg-red-700"
-                        : "bg-indigo-600 hover:bg-indigo-700"
-                    } transition-colors duration-200`}
-                  >
-                    {isScanning ? "Cancel Scan" : "Scan QR Code"}
-                  </Button>
-                  {isScanning && (
-                    <div className="w-full max-w-sm mx-auto space-y-4">
-                      <QrScanner
-                        onScan={handleScan}
-                        onError={handleError}
-                        style={{ width: "100%" }}
-                        constraints={{
-                          video: {
-                            facingMode: facingMode,
-                          },
-                        }}
-                      />
+  const fetchQuizResult = async (quizId: number, quizContractAddress: string) => {
+    try {
+      const result = await getQuizResults(
+        quizContractAddress,
+        quizId,
+        address,
+        provider
+      );
+      
+      setQuizResultsByContract((prev) => ({
+        ...prev,
+        [`${quizContractAddress}-${quizId}`]: result
+      }));
+      
+      return result;
+    } catch (error) {
+      console.error("Error fetching quiz result:", error);
+      return null;
+    }
+  };
+
+  const handleViewQuizResult = async (quiz: Quiz, quizContractAddress: string) => {
+    try {
+      // Check if we already have the result
+      let result = quizResultsByContract[`${quizContractAddress}-${quiz.id}`];
+      
+      // If not, fetch it
+      if (!result) {
+        result = await fetchQuizResult(quiz.id, quizContractAddress);
+      }
+      
+      if (result && result.hasAttempted) {
+        showQuizResults(quiz, result);
+      } else {
+        setConfirmationMessage("You haven't attempted this quiz yet.");
+      }
+    } catch (error) {
+      console.error("Error viewing quiz result:", error);
+      setConfirmationMessage("Failed to load quiz results. Please try again.");
+    }
+  };
+
+  const refreshQuizzes = async (classAddress: string) => {
+    try {
+      // Get quiz contracts for this class
+      const quizContracts = await getClassQuizzes(classAddress, provider);
+      setQuizContractsByClass((prev) => ({
+        ...prev,
+        [classAddress]: quizContracts
+      }));
+      
+      // Fetch quizzes for each contract
+      for (const quizContractAddress of quizContracts) {
+        await fetchQuizzes(quizContractAddress);
+      }
+      
+      setConfirmationMessage("Quizzes refreshed successfully!");
+    } catch (error) {
+      console.error("Error refreshing quizzes:", error);
+      setConfirmationMessage("Failed to refresh quizzes. Please try again.");
+    }
+  };
+
+  const closePopup = () => {
+    setIsPopupOpen(false);
+    setPopupContent(null);
+  };
+
+  // Render all quizzes from all contracts
+  const renderQuizzes = (classAddress: string) => {
+    // Get all quiz contracts for this class
+    const quizContracts = quizContractsByClass[classAddress] || [];
+    
+    // If no quiz contracts, show a message
+    if (quizContracts.length === 0) {
+      return (
+        <div className="text-center p-4 text-gray-500">
+          No quizzes available for this class.
+        </div>
+      );
+    }
+    
+    // Count total quizzes across all contracts
+    const totalQuizzes = quizContracts.reduce((count, contractAddress) => {
+      const quizzes = quizzesByContract[contractAddress] || [];
+      return count + quizzes.filter(quiz => quiz.isActive).length;
+    }, 0);
+    
+    if (totalQuizzes === 0) {
+      return (
+        <div className="text-center p-4 text-gray-500">
+          No active quizzes available for this class.
+        </div>
+      );
+    }
+    
+    // Render all quizzes from all contracts
+    return (
+      <div className="space-y-3">
+        {quizContracts.map(contractAddress => {
+          const quizzes = quizzesByContract[contractAddress] || [];
+          const activeQuizzes = quizzes.filter(quiz => quiz.isActive);
+          
+          if (activeQuizzes.length === 0) return null;
+          
+          return activeQuizzes.map(quiz => {
+            const isExpired = Date.now() > quiz.expiresAt;
+            const result = quizResultsByContract[`${contractAddress}-${quiz.id}`];
+            const hasAttempted = result?.hasAttempted;
+            
+            const lectureInfo = lecturesByClass[classAddress]?.find(
+              (l) => l.id === quiz.lectureId
+            );
+            
+            return (
+              <div
+                key={`${contractAddress}-${quiz.id}`}
+                className={`p-3 border rounded ${isExpired && !hasAttempted ? 'opacity-70' : ''}`}
+              >
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <h3 className="font-medium">{quiz.title}</h3>
+                    {hasAttempted ? (
+                      <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                        Completed
+                      </span>
+                    ) : isExpired ? (
+                      <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-800">
+                        Expired
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                        Available
+                      </span>
+                    )}
+                  </div>
+                  
+                  <p className="text-sm">{quiz.description}</p>
+                  
+                  <div className="text-xs text-gray-500">
+                    <div>Questions: {quiz.questionCount}</div>
+                    <div>Lecture: {lectureInfo?.topic || quiz.lectureId}</div>
+                    <div>Expires: {new Date(quiz.expiresAt).toLocaleString()}</div>
+                    {hasAttempted && (
+                      <div className="text-green-600 font-medium">
+                        Score: {result.score}/{result.totalQuestions} ({Math.round((result.score / result.totalQuestions) * 100)}%)
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="pt-2">
+                    {hasAttempted ? (
                       <Button
-                        onClick={toggleCamera}
-                        className="w-full bg-gray-600 hover:bg-gray-700 transition-colors duration-200"
+                        onClick={() => handleViewQuizResult(quiz, contractAddress)}
+                        variant="outline"
+                        size="sm"
                       >
-                        Flip Camera
+                        View Results
                       </Button>
-                    </div>
-                  )}
-                  {scannedLectureId && (
-                    <Button
-                      onClick={handleMarkAttendance}
-                      disabled={isMarkingAttendance}
-                      className="bg-green-600 hover:bg-green-700 transition-colors duration-200"
-                    >
-                      {isMarkingAttendance
-                        ? "Marking Attendance..."
-                        : "Mark Attendance for Scanned Lecture"}
-                    </Button>
-                  )}
+                    ) : !isExpired ? (
+                      <Button
+                        onClick={() => handleTakeQuiz(quiz, contractAddress)}
+                        disabled={isFetchingQuizQuestions}
+                        size="sm"
+                      >
+                        {isFetchingQuizQuestions ? "Loading Quiz..." : "Take Quiz"}
+                      </Button>
+                    ) : (
+                      <span className="text-red-600 text-sm">
+                        This quiz has expired and can no longer be taken
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            );
+          });
+        })}
+      </div>
+    );
+  };
 
-            <Card className="mb-6 bg-white/80 backdrop-blur-sm shadow-xl hidden">
+  // Render
+  return (
+    <div className="container mx-auto p-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-semibold">Student Dashboard</h1>
+        {classes.length > 1 && (
+          <div className="flex items-center space-x-2">
+            <span className="text-gray-500">Select Class:</span>
+            <select
+              value={selectedClass?.classAddress || ""}
+              onChange={(e) => {
+                const selected = classes.find(
+                  (c) => c.classAddress === e.target.value
+                );
+                if (selected) {
+                  setSelectedClass(selected);
+                }
+              }}
+              className="border rounded p-2"
+            >
+              {classes.map((classItem) => (
+                <option key={classItem.classAddress} value={classItem.classAddress}>
+                  {classItem.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {confirmationMessage && (
+        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4">
+          {confirmationMessage}
+        </div>
+      )}
+
+      {isLoadingInitialData ? (
+        <div className="text-center p-10">Loading your classes...</div>
+      ) : classes.length === 0 ? (
+        <div className="text-center p-10">
+          <p>You are not enrolled in any classes.</p>
+        </div>
+      ) : (
+        <div>
+          {selectedClass && (
+            <Card className="mb-6">
               <CardHeader>
-                <CardTitle className="text-2xl text-indigo-700">
-                  Your Attendance Records
-                </CardTitle>
+                <CardTitle>{selectedClass.name}</CardTitle>
+                <CardDescription>
+                  You are enrolled in this class
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[300px] w-full rounded-md border p-4">
-                  {Object.keys(isFetchingAttendance).some(
-                    (key) => isFetchingAttendance[key]
-                  ) ? (
-                    <div className="text-center py-4">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-2"></div>
-                      <p className="text-gray-600">
-                        Loading attendance records...
-                      </p>
-                    </div>
-                  ) : (
-                    <ul className="space-y-4">
-                      {attendanceRecords.map((record, index) => (
-                        <motion.li
-                          key={index}
-                          className={`p-3 rounded-lg flex items-center ${
-                            record
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.3, delay: index * 0.1 }}
-                        >
-                          {record ? (
-                            <CheckCircle className="mr-2" />
-                          ) : (
-                            <XCircle className="mr-2" />
-                          )}
-                          {record ? "Present" : "Absent"} - Lecture {index + 1}
-                        </motion.li>
-                      ))}
-                    </ul>
-                  )}
-                </ScrollArea>
+                <Tabs defaultValue="lectures">
+                  <TabsList className="w-full">
+                    <TabsTrigger value="lectures" className="flex-1">
+                      <BookOpen className="h-4 w-4 mr-2" /> Lectures & Attendance
+                    </TabsTrigger>
+                    <TabsTrigger value="quizzes" className="flex-1">
+                      <FilePieChart className="h-4 w-4 mr-2" /> Quizzes
+                    </TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="lectures" className="pt-4">
+                    <Button
+                      onClick={() => fetchLectures(selectedClass.classAddress)}
+                      disabled={isFetchingLectures[selectedClass.classAddress]}
+                      variant="outline"
+                      className="w-full mb-4"
+                    >
+                      {isFetchingLectures[selectedClass.classAddress]
+                        ? "Loading lectures..."
+                        : "Refresh Lectures"}
+                    </Button>
+                    
+                    {lecturesByClass[selectedClass.classAddress]?.length > 0 ? (
+                      <div className="space-y-3">
+                        {lecturesByClass[selectedClass.classAddress].map((lecture, index) => {
+                          const hasAttendance = attendanceByClass[selectedClass.classAddress]?.[index];
+                          
+                          return (
+                            <div key={lecture.id} className="p-3 border rounded">
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <h3 className="font-medium">{lecture.topic}</h3>
+                                  <p className="text-sm text-gray-500">ID: {lecture.id}</p>
+                                </div>
+                                <div className="flex items-center space-x-3">
+                                  {hasAttendance ? (
+                                    <span className="text-green-600 font-medium">
+                                      Attendance Marked ✓
+                                    </span>
+                                  ) : (
+                                    <Button
+                                      onClick={() => handleMarkAttendance(lecture.id, selectedClass.classAddress)}
+                                      disabled={isMarkingAttendance[`${selectedClass.classAddress}-${lecture.id}`]}
+                                      size="sm"
+                                    >
+                                      {isMarkingAttendance[`${selectedClass.classAddress}-${lecture.id}`]
+                                        ? "Marking..."
+                                        : "Mark Attendance"}
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center p-4 text-gray-500">
+                        No lectures available for this class.
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  <TabsContent value="quizzes" className="pt-4">
+                    <Button
+                      onClick={() => refreshQuizzes(selectedClass.classAddress)}
+                      variant="outline"
+                      className="w-full mb-4"
+                    >
+                      Refresh Quizzes
+                    </Button>
+                    
+                    {renderQuizzes(selectedClass.classAddress)}
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
-          </motion.div>
-        </TabsContent>
+          )}
+        </div>
+      )}
 
-        <TabsContent value="classes">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            <h2 className="text-2xl font-bold mb-4 text-indigo-700">
-              Your Enrolled Classes
-            </h2>
-            {isFetchingClasses ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading classes...</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {eligibleClasses.map((classItem, index) => (
-                  <motion.div
-                    key={classItem.classAddress}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: index * 0.1 }}
-                  >
-                    <Card className="bg-white/80 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-200 transform hover:-translate-y-1">
-                      <CardHeader>
-                        <CardTitle className="text-xl text-indigo-600">
-                          {classItem.name}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <Badge variant="secondary" className="mb-2">
-                          {classItem.symbol}
-                        </Badge>
-                        <p className="text-gray-600 mt-2">
-                          Class Address: {classItem.classAddress.slice(0, 6)}...
-                          {classItem.classAddress.slice(-4)}
-                        </p>
-                        {/* <Button className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 transition-colors duration-200">
-                          Enroll in Class
-                        </Button> */}
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </motion.div>
-        </TabsContent>
-      </Tabs>
+      {isPopupOpen && popupContent && (
+        <Popup
+          title={popupContent.title}
+          content={popupContent.content}
+          onClose={closePopup}
+        />
+      )}
     </div>
   );
 }

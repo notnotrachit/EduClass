@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract ClassFactory is Ownable {
     event ClassCreated(address classAddress);
+    event QuizLinked(address quizAddress, address classAddress);
 
     struct ClassInfo {
         address classAddress;
@@ -15,6 +16,7 @@ contract ClassFactory is Ownable {
     }
 
     ClassInfo[] public classes;
+    mapping(address => address[]) public classQuizzes; // classAddress => quizAddresses
 
     constructor() Ownable(msg.sender) {}
 
@@ -26,6 +28,26 @@ contract ClassFactory is Ownable {
             symbol: symbol
         }));
         emit ClassCreated(address(newClass));
+    }
+
+    function linkQuizToClass(address classAddress, address quizAddress) public onlyOwner {
+        // Verify that the class exists
+        bool classExists = false;
+        for (uint i = 0; i < classes.length; i++) {
+            if (classes[i].classAddress == classAddress) {
+                classExists = true;
+                break;
+            }
+        }
+        require(classExists, "Class does not exist");
+        
+        // Add quiz to the class's quiz list
+        classQuizzes[classAddress].push(quizAddress);
+        emit QuizLinked(quizAddress, classAddress);
+    }
+
+    function getClassQuizzes(address classAddress) public view returns (address[] memory) {
+        return classQuizzes[classAddress];
     }
 
     function getClasses() public view returns (ClassInfo[] memory) {
@@ -134,6 +156,4 @@ contract ClassContract is ERC721Enumerable, Ownable {
     function getStudentName(uint256 tokenId) public view returns (string memory) {
         return _studentNames[tokenId];
     }
-
-
 }

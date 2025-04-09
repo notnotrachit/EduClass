@@ -6,6 +6,8 @@ import {
   ContractCreateTransaction,
 } from "@hashgraph/sdk";
 import fs from "fs";
+import path from "path";
+import { ethers } from "hardhat";
 
 async function uploadBytecode(client, bytecode) {
   // console.log(bytecode);
@@ -32,6 +34,9 @@ async function main() {
   const classContractBytecode = JSON.parse(fs.readFileSync(
     "./artifacts/contracts/ClassContract.sol/ClassContract.json"
   )).bytecode;
+  const quizContractBytecode = JSON.parse(fs.readFileSync(
+    "./artifacts/contracts/QuizContract.sol/QuizContract.json"
+  )).bytecode;
 
   const classFactoryFileId = await uploadBytecode(client, classFactoryBytecode);
   console.log(
@@ -46,6 +51,15 @@ async function main() {
   console.log(
     "ClassContract bytecode uploaded with file ID:",
     classContractFileId.toString()
+  );
+
+  const quizContractFileId = await uploadBytecode(
+    client,
+    quizContractBytecode
+  );
+  console.log(
+    "QuizContract bytecode uploaded with file ID:",
+    quizContractFileId.toString()
   );
 
   // Use file IDs to deploy the contracts
@@ -67,6 +81,16 @@ async function main() {
   console.log(
     "ClassContract deployed to:",
     classContractReceipt.contractId.toString()
+  );
+
+  const quizContractTx = await new ContractCreateTransaction()
+    .setBytecodeFileId(quizContractFileId)
+    .setGas(1000000)
+    .execute(client);
+  const quizContractReceipt = await quizContractTx.getReceipt(client);
+  console.log(
+    "QuizContract deployed to:",
+    quizContractReceipt.contractId.toString()
   );
 }
 

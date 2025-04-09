@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   createClass,
   mintNFT,
@@ -10,6 +10,15 @@ import {
   getClasses,
   getLectures,
   getAttendanceRecords,
+  createQuiz,
+  addQuizQuestion,
+  getQuizzes,
+  getQuizzesByLecture,
+  getQuizResults,
+  deactivateQuiz,
+  deployQuizContract,
+  linkQuizToClass,
+  getClassQuizzes
 } from "@/lib/contractService";
 import { useWalletContext } from "@/context/WalletContext";
 import QRious from "qrious";
@@ -17,6 +26,13 @@ import { motion } from "framer-motion";
 import Popup from "../components/Popup";
 import StudentForm from "../components/StudentForm";
 import CreateClassForm from "../components/CreateClassForm";
+import CreateQuizForm from "../components/CreateQuizForm";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PlusCircle, GraduationCap, BookOpen, Edit, Eye, FilePieChart, Link } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ethers } from "ethers";
+import ClassContract from "@/lib/contracts/ClassContract.sol/ClassContract.json";
 
 interface Class {
   id: string;
@@ -53,6 +69,29 @@ interface PopupContentType {
   content: React.ReactNode;
 }
 
+interface Quiz {
+  id: number;
+  title: string;
+  description: string;
+  createdAt: number;
+  expiresAt: number;
+  lectureId: number;
+  isActive: boolean;
+  questionCount: number;
+}
+
+interface QuizzesByContract {
+  [quizContractAddress: string]: Quiz[];
+}
+
+interface QuizResultsByStudent {
+  address: string;
+  name: string;
+  score: number;
+  totalQuestions: number;
+  attemptedAt: number;
+}
+
 export function TeacherDashboard() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [confirmationMessage, setConfirmationMessage] = useState("");
@@ -76,7 +115,25 @@ export function TeacherDashboard() {
   }>({});
   const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
 
-  const { provider } = useWalletContext();
+  // Quiz related state
+  const [quizzesByContract, setQuizzesByContract] = useState<QuizzesByContract>({});
+  const [quizContractsByClass, setQuizContractsByClass] = useState<{[classAddress: string]: string[]}>({});
+  const [isFetchingQuizzes, setIsFetchingQuizzes] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
+  const [isDeployingQuizContract, setIsDeployingQuizContract] = useState(false);
+  const [isLinkingQuizContract, setIsLinkingQuizContract] = useState(false);
+  const [selectedLectureForQuiz, setSelectedLectureForQuiz] = useState<{
+    lectureId: number;
+    classAddress: string;
+  } | null>(null);
+  const [quizResultsByQuiz, setQuizResultsByQuiz] = useState<{
+    [key: string]: QuizResultsByStudent[];
+  }>({});
+  const [newQuizContractAddress, setNewQuizContractAddress] = useState("");
+
+  const { provider, address } = useWalletContext();
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -92,6 +149,23 @@ export function TeacherDashboard() {
         }));
         setClasses(formattedClasses);
 
+        // For each class, fetch associated quiz contracts
+        for (const classItem of formattedClasses) {
+          try {
+            const quizContracts = await getClassQuizzes(classItem.classAddress, provider);
+            setQuizContractsByClass((prev) => ({
+              ...prev,
+              [classItem.classAddress]: quizContracts
+            }));
+
+            // Fetch quizzes for each quiz contract
+            for (const quizContractAddress of quizContracts) {
+              await fetchQuizzes(quizContractAddress);
+            }
+          } catch (error) {
+            console.error(`Error fetching quiz contracts for class ${classItem.classAddress}:`, error);
+          }
+        }
       } catch (error) {
         console.error("Error fetching initial data:", error);
         setConfirmationMessage(
@@ -379,67 +453,390 @@ export function TeacherDashboard() {
     setIsPopupOpen(true);
   };
 
+  const fetchQuizzes = async (quizContractAddress: string) => {
+    try {
+      setIsFetchingQuizzes((prev) => ({ ...prev, [quizContractAddress]: true }));
+      const quizzesList = await getQuizzes(quizContractAddress, provider);
+      setQuizzesByContract((prev) => ({
+        ...prev,
+        [quizContractAddress]: quizzesList,
+      }));
+    } catch (error) {
+      console.error(`Error fetching quizzes for contract ${quizContractAddress}:`, error);
+      setConfirmationMessage("Failed to fetch quizzes. Please try again.");
+    } finally {
+      setIsFetchingQuizzes((prev) => ({ ...prev, [quizContractAddress]: false }));
+    }
+  };
+
+  const openCreateQuizForm = (quizContractAddress: string, classAddress: string) => {
+    const classLectures = lecturesByClass[classAddress] || [];
+    
+    const handleFormSubmit = async (formData: {
+      title: string;
+      description: string;
+      expiresAt: number;
+      lectureId: number;
+      questions: Array<{
+        text: string;
+        options: string[];
+        correctOptionIndex: number;
+      }>;
+    }) => {
+      try {
+        setIsCreatingQuiz(true);
+        
+        // Create the quiz
+        const quizId = await createQuiz(
+          quizContractAddress,
+          formData.title,
+          formData.description,
+          formData.expiresAt,
+          formData.lectureId,
+          provider
+        );
+        
+        // Add questions to the quiz
+        for (const question of formData.questions) {
+          await addQuizQuestion(
+            quizContractAddress,
+            quizId,
+            question.text,
+            question.options,
+            question.correctOptionIndex,
+            provider
+          );
+        }
+        
+        setConfirmationMessage(`Quiz "${formData.title}" created successfully!`);
+        await fetchQuizzes(quizContractAddress);
+        setIsPopupOpen(false);
+      } catch (error) {
+        console.error("Error creating quiz:", error);
+        setConfirmationMessage("Failed to create quiz. Please try again.");
+      } finally {
+        setIsCreatingQuiz(false);
+      }
+    };
+
+    setPopupContent({
+      title: "Create New Quiz",
+      content: (
+        <CreateQuizForm
+          onSubmit={handleFormSubmit}
+          lectures={classLectures}
+          isCreatingQuiz={isCreatingQuiz}
+        />
+      ),
+    });
+    setIsPopupOpen(true);
+  };
+
+  const fetchQuizResultsByQuiz = async (quizId: number, quizContractAddress: string, classAddress: string) => {
+    try {
+      // First, attempt to get all students from the class contract
+      const signer = provider.getSigner();
+      const classContract = new ethers.Contract(classAddress, ClassContract.abi, signer);
+      const totalSupply = await classContract.totalSupply();
+      
+      // Get all student addresses and names
+      const addresses = [];
+      const names = [];
+      
+      for (let i = 1; i <= totalSupply.toNumber(); i++) {
+        try {
+          const studentAddress = await classContract.ownerOf(i);
+          const studentName = await classContract.getStudentName(i);
+          addresses.push(studentAddress);
+          names.push(studentName);
+        } catch (error) {
+          console.error(`Error getting student at index ${i}:`, error);
+        }
+      }
+      
+      // Get results for each student
+      const results: QuizResultsByStudent[] = [];
+      
+      for (let i = 0; i < addresses.length; i++) {
+        try {
+          const studentAddress = addresses[i];
+          const studentName = names[i];
+          
+          const result = await getQuizResults(
+            quizContractAddress,
+            quizId,
+            studentAddress,
+            provider
+          );
+          
+          if (result.hasAttempted) {
+            results.push({
+              address: studentAddress,
+              name: studentName,
+              score: result.score,
+              totalQuestions: result.totalQuestions,
+              attemptedAt: result.attemptedAt
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching result for student:", error);
+        }
+      }
+      
+      console.log(`Found ${results.length} students who attempted quiz ${quizId}`);
+      
+      setQuizResultsByQuiz((prev) => ({
+        ...prev,
+        [`${quizContractAddress}-${quizId}`]: results
+      }));
+      
+    } catch (error) {
+      console.error("Error fetching quiz results:", error);
+      setConfirmationMessage("Failed to fetch quiz results. Please try again.");
+    }
+  };
+
+  const handleDeactivateQuiz = async (quizId: number, quizContractAddress: string) => {
+    try {
+      await deactivateQuiz(quizContractAddress, quizId, provider);
+      setConfirmationMessage("Quiz deactivated successfully!");
+      
+      // Refresh quizzes
+      await fetchQuizzes(quizContractAddress);
+    } catch (error) {
+      console.error("Error deactivating quiz:", error);
+      setConfirmationMessage("Failed to deactivate quiz. Please try again.");
+    }
+  };
+
+  const handleViewQuizResults = async (quizId: number, quizContractAddress: string, classAddress: string, title: string) => {
+    // Fetch results if not already loaded
+    if (!quizResultsByQuiz[`${quizContractAddress}-${quizId}`]) {
+      await fetchQuizResultsByQuiz(quizId, quizContractAddress, classAddress);
+    }
+    
+    const results = quizResultsByQuiz[`${quizContractAddress}-${quizId}`] || [];
+    
+    setPopupContent({
+      title: `Results: ${title}`,
+      content: (
+        <div className="space-y-4">
+          <div className="text-sm text-muted-foreground mb-4">
+            {results.length} {results.length === 1 ? 'student has' : 'students have'} attempted this quiz
+          </div>
+          
+          {results.length > 0 ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 font-medium text-sm py-2 border-b">
+                <div>Student</div>
+                <div>Score</div>
+                <div>Completion Time</div>
+              </div>
+              
+              {results.map((result, index) => (
+                <div key={index} className="grid grid-cols-3 text-sm py-2 border-b border-gray-100">
+                  <div>{result.name}</div>
+                  <div>
+                    {result.score}/{result.totalQuestions} ({Math.round((result.score / result.totalQuestions) * 100)}%)
+                  </div>
+                  <div>{new Date(result.attemptedAt).toLocaleString()}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 text-muted-foreground">
+              No students have attempted this quiz yet.
+            </div>
+          )}
+          
+          <Button 
+            onClick={() => downloadQuizResults(quizId, title, results)}
+            className="w-full mt-4"
+          >
+            Download Results CSV
+          </Button>
+        </div>
+      ),
+    });
+    setIsPopupOpen(true);
+  };
+
+  const downloadQuizResults = (quizId: number, quizTitle: string, results: QuizResultsByStudent[]) => {
+    const rows = [
+      ['Student Name', 'Address', 'Score', 'Total Questions', 'Percentage', 'Attempted At'],
+      ...results.map(r => [
+        r.name,
+        r.address,
+        r.score.toString(),
+        r.totalQuestions.toString(),
+        `${Math.round((r.score / r.totalQuestions) * 100)}%`,
+        new Date(r.attemptedAt).toLocaleString()
+      ])
+    ];
+    
+    const csvContent = rows.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Quiz_${quizId}_${quizTitle.replace(/\s+/g, '_')}_Results.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const refreshQuizContracts = async (classAddress: string) => {
+    try {
+      const quizContracts = await getClassQuizzes(classAddress, provider);
+      setQuizContractsByClass((prev) => ({
+        ...prev,
+        [classAddress]: quizContracts
+      }));
+      
+      // Fetch quizzes for each contract
+      for (const quizContractAddress of quizContracts) {
+        await fetchQuizzes(quizContractAddress);
+      }
+      
+      setConfirmationMessage("Quiz contracts refreshed successfully!");
+    } catch (error) {
+      console.error("Error refreshing quiz contracts:", error);
+      setConfirmationMessage("Failed to refresh quiz contracts. Please try again.");
+    }
+  };
+
+  // Quiz related functions
+  const handleDeployQuizContract = async () => {
+    try {
+      setIsDeployingQuizContract(true);
+      const quizContractAddress = await deployQuizContract(address, provider);
+      setNewQuizContractAddress(quizContractAddress);
+      setConfirmationMessage(`Quiz contract deployed at: ${quizContractAddress}`);
+    } catch (error) {
+      console.error("Error deploying quiz contract:", error);
+      setConfirmationMessage("Failed to deploy quiz contract. Please try again.");
+    } finally {
+      setIsDeployingQuizContract(false);
+    }
+  };
+
+  const handleLinkQuizContract = async (classAddress: string, quizContractAddress: string) => {
+    if (!quizContractAddress) {
+      setConfirmationMessage("Please enter a quiz contract address.");
+      return;
+    }
+
+    try {
+      setIsLinkingQuizContract(true);
+      await linkQuizToClass(classAddress, quizContractAddress, provider);
+      
+      // Update quiz contracts for this class
+      const quizContracts = await getClassQuizzes(classAddress, provider);
+      setQuizContractsByClass((prev) => ({
+        ...prev,
+        [classAddress]: quizContracts
+      }));
+      
+      // Fetch quizzes for the newly linked contract
+      await fetchQuizzes(quizContractAddress);
+      
+      setConfirmationMessage("Quiz contract linked successfully!");
+      setNewQuizContractAddress("");
+    } catch (error) {
+      console.error("Error linking quiz contract:", error);
+      setConfirmationMessage("Failed to link quiz contract. Please check the address and try again.");
+    } finally {
+      setIsLinkingQuizContract(false);
+    }
+  };
+
+  const openLinkQuizContractForm = (classAddress: string) => {
+    setPopupContent({
+      title: "Link Quiz Contract",
+      content: (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="quizContractAddress">Quiz Contract Address</Label>
+            <Input
+              id="quizContractAddress"
+              value={newQuizContractAddress}
+              onChange={(e) => setNewQuizContractAddress(e.target.value)}
+              placeholder="Enter quiz contract address"
+              className="w-full"
+            />
+          </div>
+          
+        <Button
+            onClick={() => handleLinkQuizContract(classAddress, newQuizContractAddress)}
+            disabled={isLinkingQuizContract}
+            className="w-full"
+        >
+            {isLinkingQuizContract ? "Linking..." : "Link Quiz Contract"}
+        </Button>
+          
+          <div className="text-center text-sm text-muted-foreground mt-2">
+            <p>Don't have a quiz contract? Deploy one first.</p>
+            <Button
+              onClick={handleDeployQuizContract}
+              disabled={isDeployingQuizContract}
+              variant="outline"
+              className="mt-2 w-full"
+            >
+              {isDeployingQuizContract ? "Deploying..." : "Deploy New Quiz Contract"}
+            </Button>
+          </div>
+        </div>
+      ),
+    });
+    setIsPopupOpen(true);
+  };
 
   return (
-    <div className="py-6 bg-gradient-to-br from-blue-100 to-indigo-200 min-h-screen px-6 lg:px-32">
-      <motion.div
-        className="flex justify-between items-center mb-6"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <h1 className="text-4xl font-bold text-indigo-800">
-          Teacher Dashboard
-        </h1>
-        <Button
-          onClick={openCreateClassForm}
-          className="bg-indigo-600 hover:bg-indigo-700 transition-colors duration-200"
-        >
-          Create New Class
-        </Button>
-      </motion.div>
+    <div className="container mx-auto p-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-semibold">Teacher Dashboard</h1>
+        <Button onClick={openCreateClassForm}>Create New Class</Button>
+      </div>
 
       {confirmationMessage && (
-        <motion.p
-          className="text-green-500 mb-4"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
+        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4">
           {confirmationMessage}
-        </motion.p>
+        </div>
       )}
 
       {isLoadingInitialData ? (
-        <div className="flex flex-col items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mb-4"></div>
-          <p className="text-lg text-gray-600">Loading your classes...</p>
+        <div className="text-center p-10">Loading classes...</div>
+      ) : classes.length === 0 ? (
+        <div className="text-center p-10">
+          <p className="mb-4">No classes found. Create your first class to get started.</p>
+          <Button onClick={openCreateClassForm}>Create New Class</Button>
         </div>
       ) : (
-        <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.4 }}
-        >
-          {classes.map((classItem, index) => (
-            <motion.div
-              key={classItem.classAddress}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 * index }}
-            >
-              <Card className="bg-white/80 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-shadow duration-200">
-                <CardHeader>
-                  <CardTitle className="text-2xl text-indigo-700">
-                    {classItem.name}
-                  </CardTitle>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {classes.map((classItem) => (
+            <Card key={classItem.classAddress} className="overflow-hidden">
+              <CardHeader className="bg-gray-50">
+                <CardTitle>{classItem.name}</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
+              <CardContent className="p-0">
+                <Tabs defaultValue="lectures">
+                  <TabsList className="w-full">
+                    <TabsTrigger value="lectures" className="flex-1">
+                      <BookOpen className="h-4 w-4 mr-2" /> Lectures
+                    </TabsTrigger>
+                    <TabsTrigger value="students" className="flex-1">
+                      <GraduationCap className="h-4 w-4 mr-2" /> Students
+                    </TabsTrigger>
+                    <TabsTrigger value="quizzes" className="flex-1">
+                      <FilePieChart className="h-4 w-4 mr-2" /> Quizzes
+                    </TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="lectures" className="p-4">
+                    <div className="mb-4">
+                      <div className="flex items-center space-x-2 mb-2">
                     <input
                       type="text"
-                      placeholder="Lecture Topic"
+                          className="border rounded p-2 flex-1"
                       value={lectureTopicsByClass[classItem.classAddress] || ""}
                       onChange={(e) =>
                         setLectureTopicsByClass((prev) => ({
@@ -447,95 +844,228 @@ export function TeacherDashboard() {
                           [classItem.classAddress]: e.target.value,
                         }))
                       }
-                      className="w-full border p-2 rounded"
+                          placeholder="Lecture Topic"
                     />
                     <Button
-                      onClick={() =>
-                        handleCreateLecture(classItem.classAddress)
-                      }
+                          onClick={() => handleCreateLecture(classItem.classAddress)}
                       disabled={isCreatingLecture[classItem.classAddress]}
-                      className="w-full bg-green-600 hover:bg-green-700 transition-colors duration-200"
                     >
                       {isCreatingLecture[classItem.classAddress]
                         ? "Creating..."
-                        : "New Lecture"}
+                            : "Create"}
                     </Button>
-                    <Button
-                      onClick={() => openMintForm(classItem.classAddress)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 transition-colors duration-200"
-                    >
-                      Add Student
-                    </Button>
+                      </div>
+                    </div>
+                    
                     <Button
                       onClick={() => fetchLectures(classItem.classAddress)}
                       disabled={isFetchingLectures[classItem.classAddress]}
-                      className="w-full bg-purple-600 hover:bg-purple-700 transition-colors duration-200"
+                      variant="outline"
+                      className="w-full mb-4"
                     >
                       {isFetchingLectures[classItem.classAddress]
-                        ? "Loading..."
-                        : "View Lectures"}
+                        ? "Loading lectures..."
+                        : "Load Lectures"}
                     </Button>
-                  </div>
-
-                  {isFetchingLectures[classItem.classAddress] ? (
-                    <div className="mt-4 text-center py-4">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-2"></div>
-                      <p className="text-gray-600">Loading lectures...</p>
-                    </div>
-                  ) : lecturesByClass[classItem.classAddress]?.length === 0 ? (
-                    <div className="mt-4 p-4 bg-gray-100 rounded-lg text-center">
-                      <p className="text-gray-600">No lectures created yet.</p>
-                      <p className="text-sm text-gray-500 mt-1">
-                        Create a new lecture to get started!
-                      </p>
-                    </div>
-                  ) : (
-                    lecturesByClass[classItem.classAddress]?.map((lecture) => (
+                    
+                    {lecturesByClass[classItem.classAddress]?.length > 0 ? (
+                      <div className="space-y-3">
+                        {lecturesByClass[classItem.classAddress].map((lecture) => (
                       <div
                         key={lecture.id}
-                        className="mt-4 p-4 bg-gray-100 rounded-lg"
-                      >
-                        <h3 className="text-lg font-semibold text-indigo-600 mb-2">
-                          {lecture.topic}
-                        </h3>
-                        <div className="space-y-2">
+                            className="p-3 border rounded hover:bg-gray-50"
+                          >
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <h3 className="font-medium">{lecture.topic}</h3>
+                                <p className="text-sm text-gray-500">ID: {lecture.id}</p>
+                              </div>
+                              <div className="flex space-x-2">
                           <Button
                             onClick={() =>
-                              handleTakeAttendance(
-                                lecture.id,
-                                classItem.classAddress
-                              )
+                                    handleTakeAttendance(lecture.id, classItem.classAddress)
                             }
-                            className="w-full bg-yellow-600 hover:bg-yellow-700 transition-colors duration-200"
+                                  size="sm"
+                                  variant="outline"
                           >
                             Take Attendance
                           </Button>
                           <Button
                             onClick={() =>
-                              handleViewAttendance(
-                                lecture.id,
-                                classItem.classAddress
-                              )
+                                    handleViewAttendance(lecture.id, classItem.classAddress)
                             }
-                            className="w-full bg-teal-600 hover:bg-teal-700 transition-colors duration-200"
+                                  size="sm"
+                                  variant="outline"
                           >
                             View Attendance
                           </Button>
                         </div>
                       </div>
-                    ))
-                  )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center p-4 text-gray-500">
+                        No lectures found for this class.
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  <TabsContent value="students" className="p-4">
+                    <Button
+                      onClick={() => openMintForm(classItem.classAddress)}
+                      className="w-full mb-4"
+                    >
+                      Add Student
+                    </Button>
+                  </TabsContent>
+                  
+                  <TabsContent value="quizzes" className="p-4">
+                    <div className="flex space-x-2 mb-4">
+                      <Button
+                        onClick={() => openLinkQuizContractForm(classItem.classAddress)}
+                        className="flex-1 flex items-center justify-center gap-2"
+                      >
+                        <Link className="h-4 w-4" /> Link Quiz Contract
+                      </Button>
+                      <Button
+                        onClick={() => refreshQuizContracts(classItem.classAddress)}
+                        variant="outline"
+                        className="flex items-center gap-1"
+                      >
+                        Refresh
+                      </Button>
+                    </div>
+                    
+                    {quizContractsByClass[classItem.classAddress]?.length > 0 ? (
+                      <div className="space-y-6">
+                        {quizContractsByClass[classItem.classAddress].map((quizContractAddress) => (
+                          <div key={quizContractAddress} className="space-y-3">
+                            <div className="flex justify-between items-center">
+                              <h3 className="text-sm font-semibold text-gray-500">
+                                Contract: {quizContractAddress.substring(0, 6)}...{quizContractAddress.substring(38)}
+                              </h3>
+                              <Button
+                                onClick={() => openCreateQuizForm(quizContractAddress, classItem.classAddress)}
+                                size="sm"
+                                className="flex items-center gap-1"
+                              >
+                                <PlusCircle className="h-3 w-3" /> Add Quiz
+                              </Button>
+                            </div>
+                            
+                            <Button
+                              onClick={() => fetchQuizzes(quizContractAddress)}
+                              disabled={isFetchingQuizzes[quizContractAddress]}
+                              variant="outline"
+                              size="sm"
+                              className="w-full mb-2"
+                            >
+                              {isFetchingQuizzes[quizContractAddress]
+                                ? "Loading quizzes..."
+                                : "Load Quizzes"}
+                            </Button>
+                            
+                            {quizzesByContract[quizContractAddress]?.length > 0 ? (
+                              <div className="space-y-3 pl-2 border-l-2 border-gray-200">
+                                {quizzesByContract[quizContractAddress].map((quiz) => {
+                                  const isExpired = Date.now() > quiz.expiresAt;
+                                  const lectureInfo = lecturesByClass[classItem.classAddress]?.find(
+                                    (l) => l.id === quiz.lectureId
+                                  );
+                                  
+                                  return (
+                                    <div
+                                      key={quiz.id}
+                                      className={`p-3 border rounded hover:bg-gray-50 ${
+                                        !quiz.isActive || isExpired ? 'opacity-70' : ''
+                                      }`}
+                                    >
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between">
+                                          <h3 className="font-medium">{quiz.title}</h3>
+                                          {quiz.isActive ? (
+                                            <span className={`text-xs px-2 py-1 rounded-full ${
+                                              isExpired ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                                            }`}>
+                                              {isExpired ? 'Expired' : 'Active'}
+                                            </span>
+                                          ) : (
+                                            <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-800">
+                                              Inactive
+                                            </span>
+                                          )}
+                                        </div>
+                                        
+                                        <p className="text-sm">{quiz.description}</p>
+                                        
+                                        <div className="text-xs text-gray-500">
+                                          <div>Questions: {quiz.questionCount}</div>
+                                          <div>Lecture: {lectureInfo?.topic || quiz.lectureId}</div>
+                                          <div>Expires: {new Date(quiz.expiresAt).toLocaleString()}</div>
+                                        </div>
+                                        
+                                        <div className="flex space-x-2 pt-2">
+                                          <Button
+                                            onClick={() => handleViewQuizResults(
+                                              quiz.id,
+                                              quizContractAddress,
+                                              classItem.classAddress,
+                                              quiz.title
+                                            )}
+                                            size="sm"
+                                            variant="outline"
+                                            className="flex items-center gap-1"
+                                          >
+                                            <Eye className="h-3 w-3" /> Results
+                                          </Button>
+                                          
+                                          {quiz.isActive && (
+                                            <Button
+                                              onClick={() => handleDeactivateQuiz(
+                                                quiz.id,
+                                                quizContractAddress
+                                              )}
+                                              size="sm"
+                                              variant="destructive"
+                                              className="flex items-center gap-1"
+                                            >
+                                              Deactivate
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="text-center p-3 text-gray-500 text-sm">
+                                No quizzes found for this contract.
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center p-4 text-gray-500">
+                        No quiz contracts linked to this class.
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
                 </CardContent>
               </Card>
-            </motion.div>
           ))}
-        </motion.div>
+        </div>
       )}
 
       {isPopupOpen && popupContent && (
-        <Popup title={popupContent.title} onClose={closePopup}>
-          {popupContent.content}
-        </Popup>
+        <Popup
+          title={popupContent.title}
+          content={popupContent.content}
+          onClose={closePopup}
+        />
       )}
     </div>
   );
