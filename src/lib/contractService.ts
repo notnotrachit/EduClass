@@ -25,8 +25,20 @@ export const createClass = async (name: string, symbol: string, provider: ethers
 
 export const getClasses = async (provider: ethers.providers.Web3Provider) => {
     const signer = provider.getSigner();
+    const signerAddress = await signer.getAddress();
     const factoryContract = new ethers.Contract(CONTRACT_ADDRESS, ClassFactory.abi, signer);
-    return await factoryContract.getClasses();
+    const allClasses = await factoryContract.getClasses();
+    
+    // Filter classes where the signer is the owner
+    const ownedClasses = [];
+    for (const classInfo of allClasses) {
+        const classContract = new ethers.Contract(classInfo.classAddress, ClassContract.abi, signer);
+        const owner = await classContract.owner();
+        if (owner.toLowerCase() === signerAddress.toLowerCase()) {
+            ownedClasses.push(classInfo);
+        }
+    }
+    return ownedClasses;
 };
 
 export const mintNFT = async (classAddress: string, studentAddress: string, studentName: string, provider: ethers.providers.Web3Provider) => {
