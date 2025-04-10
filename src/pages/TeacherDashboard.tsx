@@ -319,6 +319,7 @@ export function TeacherDashboard() {
     try {
       setIsFetchingLectures((prev) => ({ ...prev, [classAddress]: true }));
       const lecturesList = await getLectures(classAddress, provider);
+      console.log("Fetched lectures:", lecturesList);
       setLecturesByClass((prev) => ({
         ...prev,
         [classAddress]: lecturesList,
@@ -326,6 +327,11 @@ export function TeacherDashboard() {
     } catch (error) {
       console.error("Error fetching lectures:", error);
       setConfirmationMessage("Failed to fetch lectures. Please try again.");
+      // Make sure to update state even when there's an error
+      setLecturesByClass((prev) => ({
+        ...prev,
+        [classAddress]: prev[classAddress] || [], // Keep previous lectures or use empty array
+      }));
     } finally {
       setIsFetchingLectures((prev) => ({ ...prev, [classAddress]: false }));
     }
@@ -1161,8 +1167,7 @@ export function TeacherDashboard() {
                                         )
                                       }
                                     >
-                                      <QRious className="h-4 w-4 mr-1" /> QR
-                                      Code
+                                      Take Attendance
                                     </Button>
                                     <Button
                                       variant="outline"
