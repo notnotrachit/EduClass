@@ -46,6 +46,7 @@ import {
   FilePieChart,
   Link,
   FileText,
+  LoaderCircle,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -238,22 +239,29 @@ export function TeacherDashboard() {
   }, [provider]);
 
   const handleCreateLecture = async (classAddress: string) => {
-    const topic = lectureTopicsByClass[classAddress];
-    if (!topic) return;
-
     try {
-      setIsCreatingLecture((prev) => ({ ...prev, [classAddress]: true }));
-      const id = await createLecture(classAddress, topic, provider);
-      setLectureTopicsByClass((prev) => ({
+      setIsCreatingLecture((prev) => ({
         ...prev,
-        [classAddress]: "",
+        [classAddress]: true,
       }));
+
+      // Assuming you have a function to get the lecture topic
+      const topic = lectureTopicsByClass[classAddress];
+      if (!topic) {
+        throw new Error("Lecture topic is required.");
+      }
+      const tx = await createLecture(classAddress, topic, provider);
+
+      setConfirmationMessage(`Lecture "${topic}" created successfully!`);
       await fetchLectures(classAddress);
     } catch (error) {
       console.error("Error creating lecture:", error);
       setConfirmationMessage("Failed to create lecture. Please try again.");
     } finally {
-      setIsCreatingLecture((prev) => ({ ...prev, [classAddress]: false }));
+      setIsCreatingLecture((prev) => ({
+        ...prev,
+        [classAddress]: false,
+      }));
     }
   };
 
@@ -263,11 +271,15 @@ export function TeacherDashboard() {
         'canvas[id^="qr-code-"]'
       );
       canvasElements.forEach((canvas) => {
-        new QRious({
-          element: canvas,
-          value: qrData,
-          size: 250,
-        });
+        try {
+          new QRious({
+            element: canvas,
+            value: qrData,
+            size: 250,
+          });
+        } catch (error) {
+          console.error("Error generating QR code:", error);
+        }
       });
     }
   }, [qrData, isPopupOpen]);
@@ -1019,7 +1031,9 @@ export function TeacherDashboard() {
       )}
 
       {isLoadingInitialData ? (
-        <div className="text-center p-10">Loading your classes...</div>
+        <div className="gird place-items-center">
+          <LoaderCircle className="h-6 w-6 animate-spin" />
+        </div>
       ) : classes.length === 0 ? (
         <div className="text-center p-10">
           <motion.div
