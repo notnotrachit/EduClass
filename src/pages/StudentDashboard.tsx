@@ -7,12 +7,13 @@ import { getEligibleClasses, getLectures, getOwnAttendance, markAttendance, getQ
 import { useWalletContext } from "@/context/WalletContext";
 import Popup from "../components/Popup";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, FilePieChart, FileText } from "lucide-react";
+import { BookOpen, FilePieChart, FileText, QrCode } from "lucide-react";
 import TakeQuizForm from "../components/TakeQuizForm";
 import QuizResults from "../components/QuizResults";
 import UploadNotesForm from "../components/UploadNotesForm";
 import NotesMarketplace from "../components/NotesMarketplace";
 import MyNotes from "../components/MyNotes";
+import QRScanner from "../components/QRScanner";
 
 interface Class {
   classAddress: string;
@@ -94,6 +95,7 @@ export function StudentDashboard() {
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [popupContent, setPopupContent] = useState<PopupContentType | null>(null);
   const [confirmationMessage, setConfirmationMessage] = useState("");
+  const [isQRScannerOpen, setIsQRScannerOpen] = useState(false);
 
   // Quiz related state
   const [quizContractsByClass, setQuizContractsByClass] = useState<QuizContractsByClass>({});
@@ -608,6 +610,44 @@ export function StudentDashboard() {
     );
   };
 
+  const openQRScanner = () => {
+    setPopupContent({
+      title: "Scan Attendance QR Code",
+      content: (
+        <QRScanner
+          onScan={handleQRScan}
+          onError={(error) => {
+            console.error("QR Scanner error:", error);
+            setConfirmationMessage("Error accessing camera. Please check camera permissions and try again.");
+            setIsPopupOpen(false);
+          }}
+          onCancel={() => setIsPopupOpen(false)}
+        />
+      ),
+    });
+    setIsPopupOpen(true);
+  };
+
+  const handleQRScan = (data: { lectureId: number; classAddress: string }) => {
+    // Verify the data contains what we need
+    if (!data || !data.lectureId || !data.classAddress) {
+      setConfirmationMessage("Invalid QR code. Please scan a valid attendance QR code.");
+      setIsPopupOpen(false);
+      return;
+    }
+
+    // Check if the scanned QR is for the currently selected class
+    if (selectedClass && data.classAddress !== selectedClass.classAddress) {
+      setConfirmationMessage("The scanned QR code is for a different class than the one you have selected.");
+      setIsPopupOpen(false);
+      return;
+    }
+    
+    // All checks passed, mark attendance
+    handleMarkAttendance(data.lectureId, data.classAddress);
+    setIsPopupOpen(false);
+  };
+
   // Render
   return (
     <div className="container mx-auto px-4 py-8">
@@ -668,7 +708,13 @@ export function StudentDashboard() {
 
               <TabsContent value="attendance">
                 <div className="grid grid-cols-1 gap-6">
-                  <h2 className="text-2xl font-bold">Attendance</h2>
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold">Attendance</h2>
+                    <Button onClick={openQRScanner}>
+                      <QrCode className="mr-2 h-4 w-4" />
+                      Scan QR Code
+                    </Button>
+                  </div>
                   <Card>
                     <CardHeader>
                       <CardTitle>Lectures</CardTitle>
@@ -696,27 +742,9 @@ export function StudentDashboard() {
                                     Attended
                                   </span>
                                 ) : (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleMarkAttendance(
-                                        lecture.id,
-                                        selectedClass.classAddress
-                                      )
-                                    }
-                                    disabled={
-                                      isMarkingAttendance[
-                                        `${selectedClass.classAddress}-${lecture.id}`
-                                      ]
-                                    }
-                                  >
-                                    {isMarkingAttendance[
-                                      `${selectedClass.classAddress}-${lecture.id}`
-                                    ]
-                                      ? "Marking..."
-                                      : "Mark Attendance"}
-                                  </Button>
+                                  <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm">
+                                    Not Attended
+                                  </span>
                                 )}
                               </div>
                             </Card>
