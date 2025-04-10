@@ -1,15 +1,33 @@
-# EduClass - Blockchain-Powered Attendance System
+# EduClass - Blockchain-Powered Education Platform
 
-EduClass is a decentralized attendance management system that leverages blockchain technology to provide secure, transparent, and efficient attendance tracking for educational institutions and organizations.
+EduClass is a comprehensive decentralized education platform that leverages blockchain technology to provide secure, transparent, and efficient tools for educational institutions and organizations.
 
 ## Features
 
+### Attendance Management
 - **Decentralized Verification**: Secure attendance records using blockchain technology
 - **QR Code Integration**: Easy attendance marking through QR code scanning
-- **Role-Based Access**: Separate interfaces for teachers and students
 - **Real-Time Updates**: Instant attendance tracking and verification
 - **Tamper-Proof Records**: Immutable attendance data stored on the blockchain
 - **Analytics Dashboard**: Comprehensive attendance statistics and reporting
+
+### Quiz Module
+- **Smart Contract Integration**: Deploy quiz contracts linked to specific classes
+- **Interactive Assessments**: Create engaging quizzes with multiple question types
+- **Automatic Grading**: Immediate feedback and automatic score calculation
+- **Result Analytics**: Track student performance with detailed analytics
+- **Time-Bound Quizzes**: Set expiration times for limited-duration assessments
+
+### Notes Sharing System
+- **Collaborative Learning**: Share lecture notes among students
+- **Version Control**: Track changes and updates to shared notes
+- **Access Control**: Manage who can view and edit notes
+- **Peer Verification**: Community validation of note quality
+
+### Student Management
+- **NFT-Based Enrollment**: Students receive NFT tokens representing their enrollment
+- **Role-Based Access**: Separate interfaces for teachers and students
+- **Student Profiles**: Comprehensive student tracking and management
 
 ## Tech Stack
 
@@ -18,6 +36,7 @@ EduClass is a decentralized attendance management system that leverages blockcha
 - **Styling**: Tailwind CSS
 - **Animations**: Framer Motion
 - **Blockchain Network**: Educhain
+- **Smart Contracts**: Solidity
 
 ## Getting Started
 
@@ -66,16 +85,21 @@ pnpm run dev
 
 ### For Teachers
 
-- Create new classes
-- Generate attendance QR codes
-- View attendance records
-- Download attendance reports
-- Manage student enrollments
+- Create new classes and add students
+- Generate attendance QR codes for lectures
+- View and download attendance records
+- Create and deploy quiz contracts
+- Design quizzes with custom questions
+- Analyze quiz results and student performance
+- Approve and manage shared notes
 
 ### For Students
 
 - Scan QR codes to mark attendance
-- Check enrolled classes
+- Check enrolled classes and attendance history
+- Participate in quizzes and view results
+- Access and contribute to shared notes
+- Track personal academic performance
 
 ## Project Structure
 
