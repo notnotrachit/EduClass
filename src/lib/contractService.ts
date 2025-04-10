@@ -67,8 +67,14 @@ export const markAttendance = async (classAddress: string, lectureId: any, provi
 
         // Submit to blockchain
         const classContract = new ethers.Contract(classAddress, ClassContract.abi, signer);
+        
+        console.log(`Marking attendance for lecture ID: ${validLectureId} in class: ${classAddress}`);
+        
+        // Submit the transaction and wait for it to be mined
         const tx = await classContract.markAttendance(validLectureId);
         await tx.wait();
+        
+        console.log("Attendance transaction confirmed");
 
         // Store attendance data on chain
         const attendanceData = {
@@ -78,17 +84,34 @@ export const markAttendance = async (classAddress: string, lectureId: any, provi
             signature
         };
 
-        // Emit the attendance data in an event for transparency
-        await classContract.emitAttendanceEvent(
-            attendanceData.studentAddress,
-            attendanceData.lectureId,
-            attendanceData.timestamp,
-            attendanceData.signature
-        );
-
+        // // Emit the attendance data in an event for transparency
+        // await classContract.emitAttendanceEvent(
+        //     attendanceData.studentAddress,
+        //     attendanceData.lectureId,
+        //     attendanceData.timestamp,
+        //     attendanceData.signature
+        // );
+        
+        return true;
     } catch (error) {
         console.error('Error marking attendance:', error);
-        throw error;
+        
+        // Extract meaningful error message
+        let errorMessage = 'Unknown error occurred';
+        if (error.message) {
+            errorMessage = error.message;
+            
+            // Handle common blockchain errors
+            if (errorMessage.includes('user rejected transaction')) {
+                errorMessage = 'Transaction was rejected';
+            } else if (errorMessage.includes('insufficient funds')) {
+                errorMessage = 'Insufficient funds for transaction';
+            } else if (errorMessage.includes('already marked')) {
+                errorMessage = 'Attendance already marked for this lecture';
+            }
+        }
+        
+        throw new Error(`Failed to mark attendance: ${errorMessage}`);
     }
 };
 

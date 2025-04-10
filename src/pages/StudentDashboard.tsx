@@ -209,18 +209,48 @@ export function StudentDashboard() {
   };
 
   const handleMarkAttendance = async (lectureId: number, classAddress: string) => {
+    const key = `${classAddress}-${lectureId}`;
     try {
-      setIsMarkingAttendance((prev) => ({ ...prev, [`${classAddress}-${lectureId}`]: true }));
+      // Set the marking status
+      setIsMarkingAttendance((prev) => ({ ...prev, [key]: true }));
+      
+      // Mark attendance on the blockchain
       await markAttendance(classAddress, lectureId, provider);
+      
+      // Set success message
       setConfirmationMessage("Attendance marked successfully!");
       
-      // Update the attendance data
-      await fetchAttendance(classAddress);
+      // Then fetch updated attendance data
+      try {
+        const attendanceList = await getOwnAttendance(classAddress, provider);
+        setAttendanceByClass((prev) => ({
+          ...prev,
+          [classAddress]: attendanceList,
+        }));
+      } catch (fetchError) {
+        // Log fetch error but don't show it to the user since attendance was marked successfully
+        console.error("Error refreshing attendance data:", fetchError);
+      }
     } catch (error) {
+      // Handle error in the attendance marking process
       console.error("Error marking attendance:", error);
-      setConfirmationMessage("Failed to mark attendance. Please try again.");
+      
+      // Extract specific error message if available
+      if (error instanceof Error) {
+        const message = error.message;
+        if (message.includes('Failed to mark attendance:')) {
+          // Extract the specific error from the contract service
+          const specificError = message.split('Failed to mark attendance:')[1].trim();
+          setConfirmationMessage(`Error: ${specificError}`);
+        } else {
+          setConfirmationMessage(`Error: ${message}`);
+        }
+      } else {
+        setConfirmationMessage("Failed to mark attendance. Please try again.");
+      }
     } finally {
-      setIsMarkingAttendance((prev) => ({ ...prev, [`${classAddress}-${lectureId}`]: false }));
+      // Reset marking status
+      setIsMarkingAttendance((prev) => ({ ...prev, [key]: false }));
     }
   };
 
@@ -644,8 +674,15 @@ export function StudentDashboard() {
     }
     
     // All checks passed, mark attendance
-    handleMarkAttendance(data.lectureId, data.classAddress);
-    setIsPopupOpen(false);
+    try {
+      // Close the QR scanner popup first
+      setIsPopupOpen(false);
+      // Then mark attendance
+      handleMarkAttendance(data.lectureId, data.classAddress);
+    } catch (error) {
+      console.error("Error in QR scan process:", error);
+      setConfirmationMessage("Failed to process attendance. Please try again.");
+    }
   };
 
   // Render
