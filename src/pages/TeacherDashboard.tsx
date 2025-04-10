@@ -193,6 +193,9 @@ export function TeacherDashboard() {
               [classItem.classAddress]: quizContracts,
             }));
 
+            // Fetch lectures for each class
+            await fetchLectures(classItem.classAddress);
+
             // Fetch quizzes for each quiz contract
             for (const quizContractAddress of quizContracts) {
               await fetchQuizzes(quizContractAddress);
@@ -666,7 +669,7 @@ export function TeacherDashboard() {
         try {
           const studentAddress = addresses[i];
           const studentName = names[i];
-          
+
           const result = await getQuizResults(
             quizContractAddress,
             quizId,
@@ -684,23 +687,28 @@ export function TeacherDashboard() {
             });
           }
         } catch (error) {
-          console.error(`Error fetching result for student ${addresses[i]}:`, error);
+          console.error(
+            `Error fetching result for student ${addresses[i]}:`,
+            error
+          );
         }
       }
-      
-      console.log(`Found ${results.length} students who attempted quiz ${quizId} (direct method)`);
+
+      console.log(
+        `Found ${results.length} students who attempted quiz ${quizId} (direct method)`
+      );
 
       // Also update the state for consistency (but we're not relying on it for the UI)
       setQuizResultsByQuiz((prev) => ({
         ...prev,
         [`${quizContractAddress}-${quizId}`]: results,
       }));
-      
+
       return results;
     } catch (error) {
       console.error("Error fetching quiz results:", error);
       setConfirmationMessage("Failed to fetch quiz results. Please try again.");
-      
+
       // Return empty array to avoid null/undefined issues
       return [];
     }
@@ -734,7 +742,9 @@ export function TeacherDashboard() {
       content: (
         <div className="flex flex-col items-center justify-center py-8">
           <LoaderCircle className="w-8 h-8 animate-spin mb-4" />
-          <p className="text-sm text-muted-foreground">Loading quiz results...</p>
+          <p className="text-sm text-muted-foreground">
+            Loading quiz results...
+          </p>
         </div>
       ),
     });
@@ -743,9 +753,15 @@ export function TeacherDashboard() {
     // Then fetch the results directly without relying on state updates
     try {
       // Directly get and use the results
-      const results = await fetchQuizResultsByQuizDirect(quizId, quizContractAddress, classAddress);
-      
-      console.log(`Displaying ${results.length} results for quiz ${quizId} (direct results)`);
+      const results = await fetchQuizResultsByQuizDirect(
+        quizId,
+        quizContractAddress,
+        classAddress
+      );
+
+      console.log(
+        `Displaying ${results.length} results for quiz ${quizId} (direct results)`
+      );
 
       // Update the popup with results
       setPopupContent({
@@ -774,7 +790,8 @@ export function TeacherDashboard() {
                     <div>{result.name}</div>
                     <div>
                       {result.score}/{result.totalQuestions} (
-                      {Math.round((result.score / result.totalQuestions) * 100)}%)
+                      {Math.round((result.score / result.totalQuestions) * 100)}
+                      %)
                     </div>
                     {/* <div>{new Date(result.attemptedAt).toLocaleString()}</div> */}
                   </div>
@@ -939,11 +956,11 @@ export function TeacherDashboard() {
               disabled={isDeployingQuizContract || isLinkingQuizContract}
               className="w-full"
             >
-              {isDeployingQuizContract 
-                ? "Deploying Contract..." 
-                : isLinkingQuizContract 
-                  ? "Linking Contract..." 
-                  : "Enable Quiz"}
+              {isDeployingQuizContract
+                ? "Deploying Contract..."
+                : isLinkingQuizContract
+                ? "Linking Contract..."
+                : "Enable Quiz"}
             </Button>
           )}
         </div>
@@ -958,32 +975,34 @@ export function TeacherDashboard() {
       // First show deploying state
       setIsDeployingQuizContract(true);
       setConfirmationMessage("Deploying new quiz contract...");
-      
+
       // Deploy the quiz contract
       const quizContractAddress = await deployQuizContract(address, provider);
-      
+
       if (!quizContractAddress) {
         throw new Error("Failed to deploy quiz contract - no address returned");
       }
-      
-      setConfirmationMessage(`Quiz contract deployed at: ${quizContractAddress}. Now linking to class...`);
-      
+
+      setConfirmationMessage(
+        `Quiz contract deployed at: ${quizContractAddress}. Now linking to class...`
+      );
+
       // Then link it to the class
       setIsLinkingQuizContract(true);
       setIsDeployingQuizContract(false);
-      
+
       await linkQuizToClass(classAddress, quizContractAddress, provider);
-      
+
       // Update quiz contracts for this class
       const quizContracts = await getClassQuizzes(classAddress, provider);
       setQuizContractsByClass((prev) => ({
         ...prev,
         [classAddress]: quizContracts,
       }));
-      
+
       // Fetch quizzes for the newly linked contract
       await fetchQuizzes(quizContractAddress);
-      
+
       setConfirmationMessage("Quiz contract successfully deployed and linked!");
       setNewQuizContractAddress("");
       setIsPopupOpen(false);
@@ -1278,8 +1297,9 @@ export function TeacherDashboard() {
                           >
                             Refresh Quiz Contracts
                           </Button> */}
-                          {(!quizContractsByClass[classItem.classAddress] || 
-                            quizContractsByClass[classItem.classAddress]?.length === 0) && (
+                          {(!quizContractsByClass[classItem.classAddress] ||
+                            quizContractsByClass[classItem.classAddress]
+                              ?.length === 0) && (
                             <Button
                               variant="outline"
                               onClick={() =>
@@ -1287,7 +1307,8 @@ export function TeacherDashboard() {
                               }
                               className="w-full sm:w-auto"
                             >
-                              <Link className="h-4 w-4 mr-2" /> Enable Quiz Module
+                              <Link className="h-4 w-4 mr-2" /> Enable Quiz
+                              Module
                             </Button>
                           )}
                         </div>
