@@ -2,7 +2,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import {
   createClass,
   mintNFT,
@@ -30,6 +36,7 @@ import StudentForm from "../components/StudentForm";
 import CreateClassForm from "../components/CreateClassForm";
 import CreateQuizForm from "../components/CreateQuizForm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+ "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PlusCircle, GraduationCap, BookOpen, Edit, Eye, FilePieChart, Link, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -121,10 +128,15 @@ export function TeacherDashboard() {
     [key: string]: boolean;
   }>({});
   const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
+  const [isLoadingQuizResults, setIsLoadingQuizResults] = useState(false); // Add this state
 
   // Quiz related state
-  const [quizzesByContract, setQuizzesByContract] = useState<QuizzesByContract>({});
-  const [quizContractsByClass, setQuizContractsByClass] = useState<{[classAddress: string]: string[]}>({});
+  const [quizzesByContract, setQuizzesByContract] = useState<QuizzesByContract>(
+    {}
+  );
+  const [quizContractsByClass, setQuizContractsByClass] = useState<{
+    [classAddress: string]: string[];
+  }>({});
   const [isFetchingQuizzes, setIsFetchingQuizzes] = useState<{
     [key: string]: boolean;
   }>({});
@@ -160,13 +172,19 @@ export function TeacherDashboard() {
         }));
         setClasses(formattedClasses);
 
+        for (const classItem of formattedClasses) {
+          await fetchLectures(classItem.classAddress); // Fetch lectures immediately
+        }
         // For each class, fetch associated quiz contracts
         for (const classItem of formattedClasses) {
           try {
-            const quizContracts = await getClassQuizzes(classItem.classAddress, provider);
+            const quizContracts = await getClassQuizzes(
+              classItem.classAddress,
+              provider
+            );
             setQuizContractsByClass((prev) => ({
               ...prev,
-              [classItem.classAddress]: quizContracts
+              [classItem.classAddress]: quizContracts,
             }));
 
             // Fetch quizzes for each quiz contract
@@ -174,7 +192,10 @@ export function TeacherDashboard() {
               await fetchQuizzes(quizContractAddress);
             }
           } catch (error) {
-            console.error(`Error fetching quiz contracts for class ${classItem.classAddress}:`, error);
+            console.error(
+              `Error fetching quiz contracts for class ${classItem.classAddress}:`,
+              error
+            );
           }
           
           // Get notes contract for this class
@@ -443,7 +464,7 @@ export function TeacherDashboard() {
       try {
         setIsCreatingClass(true);
         await createClass(formData.name, formData.symbol, provider);
-        
+
         setConfirmationMessage(`Class ${formData.name} created successfully!`);
         setIsPopupOpen(false);
 
@@ -479,23 +500,35 @@ export function TeacherDashboard() {
 
   const fetchQuizzes = async (quizContractAddress: string) => {
     try {
-      setIsFetchingQuizzes((prev) => ({ ...prev, [quizContractAddress]: true }));
+      setIsFetchingQuizzes((prev) => ({
+        ...prev,
+        [quizContractAddress]: true,
+      }));
       const quizzesList = await getQuizzes(quizContractAddress, provider);
       setQuizzesByContract((prev) => ({
         ...prev,
         [quizContractAddress]: quizzesList,
       }));
     } catch (error) {
-      console.error(`Error fetching quizzes for contract ${quizContractAddress}:`, error);
+      console.error(
+        `Error fetching quizzes for contract ${quizContractAddress}:`,
+        error
+      );
       setConfirmationMessage("Failed to fetch quizzes. Please try again.");
     } finally {
-      setIsFetchingQuizzes((prev) => ({ ...prev, [quizContractAddress]: false }));
+      setIsFetchingQuizzes((prev) => ({
+        ...prev,
+        [quizContractAddress]: false,
+      }));
     }
   };
 
-  const openCreateQuizForm = (quizContractAddress: string, classAddress: string) => {
+  const openCreateQuizForm = (
+    quizContractAddress: string,
+    classAddress: string
+  ) => {
     const classLectures = lecturesByClass[classAddress] || [];
-    
+
     const handleFormSubmit = async (formData: {
       title: string;
       description: string;
@@ -509,7 +542,7 @@ export function TeacherDashboard() {
     }) => {
       try {
         setIsCreatingQuiz(true);
-        
+
         // Create the quiz
         const quizId = await createQuiz(
           quizContractAddress,
@@ -519,7 +552,7 @@ export function TeacherDashboard() {
           formData.lectureId,
           provider
         );
-        
+
         // Add questions to the quiz
         for (const question of formData.questions) {
           await addQuizQuestion(
@@ -531,8 +564,10 @@ export function TeacherDashboard() {
             provider
           );
         }
-        
-        setConfirmationMessage(`Quiz "${formData.title}" created successfully!`);
+
+        setConfirmationMessage(
+          `Quiz "${formData.title}" created successfully!`
+        );
         await fetchQuizzes(quizContractAddress);
         setIsPopupOpen(false);
       } catch (error) {
@@ -556,17 +591,25 @@ export function TeacherDashboard() {
     setIsPopupOpen(true);
   };
 
-  const fetchQuizResultsByQuiz = async (quizId: number, quizContractAddress: string, classAddress: string) => {
+  const fetchQuizResultsByQuiz = async (
+    quizId: number,
+    quizContractAddress: string,
+    classAddress: string
+  ) => {
     try {
       // First, attempt to get all students from the class contract
       const signer = provider.getSigner();
-      const classContract = new ethers.Contract(classAddress, ClassContract.abi, signer);
+      const classContract = new ethers.Contract(
+        classAddress,
+        ClassContract.abi,
+        signer
+      );
       const totalSupply = await classContract.totalSupply();
-      
+
       // Get all student addresses and names
       const addresses = [];
       const names = [];
-      
+
       for (let i = 1; i <= totalSupply.toNumber(); i++) {
         try {
           const studentAddress = await classContract.ownerOf(i);
@@ -577,54 +620,58 @@ export function TeacherDashboard() {
           console.error(`Error getting student at index ${i}:`, error);
         }
       }
-      
+
       // Get results for each student
       const results: QuizResultsByStudent[] = [];
-      
+
       for (let i = 0; i < addresses.length; i++) {
         try {
           const studentAddress = addresses[i];
           const studentName = names[i];
-          
+
           const result = await getQuizResults(
             quizContractAddress,
             quizId,
             studentAddress,
             provider
           );
-          
+
           if (result.hasAttempted) {
             results.push({
               address: studentAddress,
               name: studentName,
               score: result.score,
               totalQuestions: result.totalQuestions,
-              attemptedAt: result.attemptedAt
+              attemptedAt: result.attemptedAt,
             });
           }
         } catch (error) {
           console.error("Error fetching result for student:", error);
         }
       }
-      
-      console.log(`Found ${results.length} students who attempted quiz ${quizId}`);
-      
+
+      console.log(
+        `Found ${results.length} students who attempted quiz ${quizId}`
+      );
+
       setQuizResultsByQuiz((prev) => ({
         ...prev,
-        [`${quizContractAddress}-${quizId}`]: results
+        [`${quizContractAddress}-${quizId}`]: results,
       }));
-      
     } catch (error) {
       console.error("Error fetching quiz results:", error);
       setConfirmationMessage("Failed to fetch quiz results. Please try again.");
     }
   };
 
-  const handleDeactivateQuiz = async (quizId: number, quizContractAddress: string) => {
+  const handleDeactivateQuiz = async (
+    quizId: number,
+    quizContractAddress: string
+  ) => {
     try {
       await deactivateQuiz(quizContractAddress, quizId, provider);
       setConfirmationMessage("Quiz deactivated successfully!");
-      
+
       // Refresh quizzes
       await fetchQuizzes(quizContractAddress);
     } catch (error) {
@@ -633,37 +680,50 @@ export function TeacherDashboard() {
     }
   };
 
-  const handleViewQuizResults = async (quizId: number, quizContractAddress: string, classAddress: string, title: string) => {
-    // Fetch results if not already loaded
+  const handleViewQuizResults = async (
+    quizId: number,
+    quizContractAddress: string,
+    classAddress: string,
+    title: string
+  ) => {
+    setIsLoadingQuizResults(true); // Set loading state to true
     if (!quizResultsByQuiz[`${quizContractAddress}-${quizId}`]) {
       await fetchQuizResultsByQuiz(quizId, quizContractAddress, classAddress);
     }
-    
+
     const results = quizResultsByQuiz[`${quizContractAddress}-${quizId}`] || [];
-    
+
+    const updatedResults =
+      quizResultsByQuiz[`${quizContractAddress}-${quizId}`] || [];
+
     setPopupContent({
       title: `Results: ${title}`,
       content: (
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground mb-4">
-            {results.length} {results.length === 1 ? 'student has' : 'students have'} attempted this quiz
+            {updatedResults.length}{" "}
+            {updatedResults.length === 1 ? "student has" : "students have"}{" "}
+            attempted this quiz
           </div>
-          
-          {results.length > 0 ? (
+          {isLoadingQuizResults ? (
+            <div className="text-center">Loading results...</div>
+          ) : results.length > 0 ? (
             <div className="space-y-2">
               <div className="grid grid-cols-3 font-medium text-sm py-2 border-b">
                 <div>Student</div>
                 <div>Score</div>
-                <div>Completion Time</div>
               </div>
-              
+
               {results.map((result, index) => (
-                <div key={index} className="grid grid-cols-3 text-sm py-2 border-b border-gray-100">
+                <div
+                  key={index}
+                  className="grid grid-cols-3 text-sm py-2 border-b border-gray-100"
+                >
                   <div>{result.name}</div>
                   <div>
-                    {result.score}/{result.totalQuestions} ({Math.round((result.score / result.totalQuestions) * 100)}%)
+                    {result.score}/{result.totalQuestions} (
+                    {Math.round((result.score / result.totalQuestions) * 100)}%)
                   </div>
-                  <div>{new Date(result.attemptedAt).toLocaleString()}</div>
                 </div>
               ))}
             </div>
@@ -672,8 +732,7 @@ export function TeacherDashboard() {
               No students have attempted this quiz yet.
             </div>
           )}
-          
-          <Button 
+          <Button
             onClick={() => downloadQuizResults(quizId, title, results)}
             className="w-full mt-4"
           >
@@ -682,28 +741,40 @@ export function TeacherDashboard() {
         </div>
       ),
     });
+    setIsLoadingQuizResults(false);
     setIsPopupOpen(true);
   };
 
-  const downloadQuizResults = (quizId: number, quizTitle: string, results: QuizResultsByStudent[]) => {
+  const downloadQuizResults = (
+    quizId: number,
+    quizTitle: string,
+    results: QuizResultsByStudent[]
+  ) => {
     const rows = [
-      ['Student Name', 'Address', 'Score', 'Total Questions', 'Percentage', 'Attempted At'],
-      ...results.map(r => [
+      [
+        "Student Name",
+        "Address",
+        "Score",
+        "Total Questions",
+        "Percentage",
+        "Attempted At",
+      ],
+      ...results.map((r) => [
         r.name,
         r.address,
         r.score.toString(),
         r.totalQuestions.toString(),
         `${Math.round((r.score / r.totalQuestions) * 100)}%`,
-        new Date(r.attemptedAt).toLocaleString()
-      ])
+        new Date(r.attemptedAt).toLocaleString(),
+      ]),
     ];
-    
-    const csvContent = rows.map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+
+    const csvContent = rows.map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `Quiz_${quizId}_${quizTitle.replace(/\s+/g, '_')}_Results.csv`;
+    a.download = `Quiz_${quizId}_${quizTitle.replace(/\s+/g, "_")}_Results.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -713,18 +784,20 @@ export function TeacherDashboard() {
       const quizContracts = await getClassQuizzes(classAddress, provider);
       setQuizContractsByClass((prev) => ({
         ...prev,
-        [classAddress]: quizContracts
+        [classAddress]: quizContracts,
       }));
-      
+
       // Fetch quizzes for each contract
       for (const quizContractAddress of quizContracts) {
         await fetchQuizzes(quizContractAddress);
       }
-      
+
       setConfirmationMessage("Quiz contracts refreshed successfully!");
     } catch (error) {
       console.error("Error refreshing quiz contracts:", error);
-      setConfirmationMessage("Failed to refresh quiz contracts. Please try again.");
+      setConfirmationMessage(
+        "Failed to refresh quiz contracts. Please try again."
+      );
     }
   };
 
@@ -734,16 +807,23 @@ export function TeacherDashboard() {
       setIsDeployingQuizContract(true);
       const quizContractAddress = await deployQuizContract(address, provider);
       setNewQuizContractAddress(quizContractAddress);
-      setConfirmationMessage(`Quiz contract deployed at: ${quizContractAddress}`);
+      setConfirmationMessage(
+        `Quiz contract deployed at: ${quizContractAddress}`
+      );
     } catch (error) {
       console.error("Error deploying quiz contract:", error);
-      setConfirmationMessage("Failed to deploy quiz contract. Please try again.");
+      setConfirmationMessage(
+        "Failed to deploy quiz contract. Please try again."
+      );
     } finally {
       setIsDeployingQuizContract(false);
     }
   };
 
-  const handleLinkQuizContract = async (classAddress: string, quizContractAddress: string) => {
+  const handleLinkQuizContract = async (
+    classAddress: string,
+    quizContractAddress: string
+  ) => {
     if (!quizContractAddress) {
       setConfirmationMessage("Please enter a quiz contract address.");
       return;
@@ -752,22 +832,24 @@ export function TeacherDashboard() {
     try {
       setIsLinkingQuizContract(true);
       await linkQuizToClass(classAddress, quizContractAddress, provider);
-      
+
       // Update quiz contracts for this class
       const quizContracts = await getClassQuizzes(classAddress, provider);
       setQuizContractsByClass((prev) => ({
         ...prev,
-        [classAddress]: quizContracts
+        [classAddress]: quizContracts,
       }));
-      
+
       // Fetch quizzes for the newly linked contract
       await fetchQuizzes(quizContractAddress);
-      
+
       setConfirmationMessage("Quiz contract linked successfully!");
       setNewQuizContractAddress("");
     } catch (error) {
       console.error("Error linking quiz contract:", error);
-      setConfirmationMessage("Failed to link quiz contract. Please check the address and try again.");
+      setConfirmationMessage(
+        "Failed to link quiz contract. Please check the address and try again."
+      );
     } finally {
       setIsLinkingQuizContract(false);
     }
@@ -788,15 +870,17 @@ export function TeacherDashboard() {
               className="w-full"
             />
           </div>
-          
-        <Button
-            onClick={() => handleLinkQuizContract(classAddress, newQuizContractAddress)}
+
+          <Button
+            onClick={() =>
+              handleLinkQuizContract(classAddress, newQuizContractAddress)
+            }
             disabled={isLinkingQuizContract}
             className="w-full"
-        >
+          >
             {isLinkingQuizContract ? "Linking..." : "Link Quiz Contract"}
-        </Button>
-          
+          </Button>
+
           <div className="text-center text-sm text-muted-foreground mt-2">
             <p>Don't have a quiz contract? Deploy one first.</p>
             <Button
@@ -805,7 +889,9 @@ export function TeacherDashboard() {
               variant="outline"
               className="mt-2 w-full"
             >
-              {isDeployingQuizContract ? "Deploying..." : "Deploy New Quiz Contract"}
+              {isDeployingQuizContract
+                ? "Deploying..."
+                : "Deploy New Quiz Contract"}
             </Button>
           </div>
         </div>
@@ -936,6 +1022,7 @@ export function TeacherDashboard() {
               </CardHeader>
               <CardContent>
                 <Tabs defaultValue="students">
+
                   <TabsList className="w-full">
                     <TabsTrigger value="students" className="flex-1">
                       <GraduationCap className="h-4 w-4 mr-2" /> Students
@@ -950,22 +1037,12 @@ export function TeacherDashboard() {
                       <FileText className="h-4 w-4 mr-2" /> Notes
                     </TabsTrigger>
                   </TabsList>
-
-                  <TabsContent value="students" className="pt-4">
-                    <Button
-                      onClick={() => openMintForm(classItem.classAddress)}
-                      variant="outline"
-                      className="w-full mb-4"
-                    >
-                      <PlusCircle className="h-4 w-4 mr-2" /> Add Student
-                    </Button>
-                  </TabsContent>
-
-                  <TabsContent value="lectures" className="pt-4">
-                    <div className="space-y-4">
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="Enter lecture topic..."
+                  <TabsContent value="lectures" className="p-4">
+                    <div className="mb-4">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <input
+                          type="text"
+                          className="border rounded p-2 flex-1"
                           value={
                             lectureTopicsByClass[classItem.classAddress] || ""
                           }
@@ -975,197 +1052,281 @@ export function TeacherDashboard() {
                               [classItem.classAddress]: e.target.value,
                             }))
                           }
+                          placeholder="Lecture Topic"
                         />
                         <Button
                           onClick={() =>
                             handleCreateLecture(classItem.classAddress)
                           }
-                          disabled={
-                            isCreatingLecture[classItem.classAddress] ||
-                            !lectureTopicsByClass[classItem.classAddress]
-                          }
+                          disabled={isCreatingLecture[classItem.classAddress]}
                         >
                           {isCreatingLecture[classItem.classAddress]
                             ? "Creating..."
-                            : "Create Lecture"}
+                            : "Create"}
                         </Button>
                       </div>
+                    </div>
 
-                      <Button
-                        onClick={() => fetchLectures(classItem.classAddress)}
-                        disabled={isFetchingLectures[classItem.classAddress]}
-                        variant="outline"
-                        className="w-full"
-                      >
-                        {isFetchingLectures[classItem.classAddress]
-                          ? "Loading lectures..."
-                          : "Refresh Lectures"}
-                      </Button>
 
-                      {lecturesByClass[classItem.classAddress]?.length > 0 ? (
-                        <div className="space-y-3">
-                          {lecturesByClass[classItem.classAddress].map(
-                            (lecture) => (
-                              <div
-                                key={lecture.id}
-                                className="p-3 border rounded"
-                              >
-                                <div className="flex justify-between items-center">
-                                  <div>
-                                    <h3 className="font-medium">
-                                      {lecture.topic}
-                                    </h3>
-                                    <p className="text-sm text-gray-500">
-                                      ID: {lecture.id}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() =>
-                                        handleTakeAttendance(
-                                          lecture.id,
-                                          classItem.classAddress
-                                        )
-                                      }
-                                    >
-                                      <QRious className="h-4 w-4 mr-1" /> QR Code
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() =>
-                                        handleViewAttendance(
-                                          lecture.id,
-                                          classItem.classAddress
-                                        )
-                                      }
-                                    >
-                                      <Eye className="h-4 w-4 mr-1" /> View
-                                      Attendance
-                                    </Button>
-                                  </div>
+                    <Button
+                      onClick={() => openMintForm(classItem.classAddress)}
+                      variant="outline"
+                      className="w-full mb-4"
+                    >
+                      {isFetchingLectures[classItem.classAddress]
+                        ? "Loading lectures..."
+                        : "Refresh Lectures"}
+                    </Button>
+
+                    {lecturesByClass[classItem.classAddress]?.length > 0 ? (
+                      <div className="space-y-3">
+                        {lecturesByClass[classItem.classAddress].map(
+                          (lecture) => (
+                            <div
+                              key={lecture.id}
+                              className="p-3 border rounded hover:bg-gray-50"
+                            >
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <h3 className="font-medium">
+                                    {lecture.topic}
+                                  </h3>
+                                  <p className="text-sm text-gray-500">
+                                    ID: {lecture.id}
+                                  </p>
+                                </div>
+                                <div className="flex space-x-2">
+                                  <Button
+                                    onClick={() =>
+                                      handleTakeAttendance(
+                                        lecture.id,
+                                        classItem.classAddress
+                                      )
+                                    }
+                                    size="sm"
+                                    variant="outline"
+                                  >
+                                    Take Attendance
+                                  </Button>
+                                  <Button
+                                    onClick={() =>
+                                      handleViewAttendance(
+                                        lecture.id,
+                                        classItem.classAddress
+                                      )
+                                    }
+                                    size="sm"
+                                    variant="outline"
+                                  >
+                                    View Attendance
+                                  </Button>
                                 </div>
                               </div>
-                            )
-                          )}
-                        </div>
-                      ) : (
-                        <div className="text-center p-4 text-gray-500">
-                          No lectures available for this class.
-                        </div>
-                      )}
-                    </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center p-4 text-gray-500">
+                        No lectures found for this class.
+                      </div>
+                    )}
                   </TabsContent>
 
-                  <TabsContent value="quizzes" className="pt-4">
-                    <div className="space-y-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-                        <h3 className="text-lg font-medium">Quiz Management</h3>
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                          <Button
-                            variant="outline"
-                            onClick={() => refreshQuizContracts(classItem.classAddress)}
-                            className="w-full sm:w-auto"
-                          >
-                            Refresh Quiz Contracts
-                          </Button>
-                          <Button 
-                            variant="outline"
-                            onClick={() => openLinkQuizContractForm(classItem.classAddress)}
-                            className="w-full sm:w-auto"
-                          >
-                            <Link className="h-4 w-4 mr-2" /> Link Quiz Contract
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      {(quizContractsByClass[classItem.classAddress]?.length > 0) ? (
-                        quizContractsByClass[classItem.classAddress].map((quizContractAddress) => (
-                          <Card key={quizContractAddress}>
-                            <CardHeader className="pb-2">
+                  <TabsContent value="students" className="p-4">
+                    <Button
+                      onClick={() => openMintForm(classItem.classAddress)}
+                      className="w-full mb-4"
+                    >
+                      Add Student
+                    </Button>
+                  </TabsContent>
+
+                  <TabsContent value="quizzes" className="p-4">
+                    <div className="flex space-x-2 mb-4">
+                      <Button
+                        onClick={() =>
+                          openLinkQuizContractForm(classItem.classAddress)
+                        }
+                        className="flex-1 flex items-center justify-center gap-2"
+                      >
+                        <Link className="h-4 w-4" /> Link Quiz Contract
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          refreshQuizContracts(classItem.classAddress)
+                        }
+                        variant="outline"
+                        className="flex items-center gap-1"
+                      >
+                        Refresh
+                      </Button>
+                    </div>
+
+                    {quizContractsByClass[classItem.classAddress]?.length >
+                    0 ? (
+                      <div className="space-y-6">
+                        {quizContractsByClass[classItem.classAddress].map(
+                          (quizContractAddress) => (
+                            <div
+                              key={quizContractAddress}
+                              className="space-y-3"
+                            >
                               <div className="flex justify-between items-center">
-                                <CardTitle className="text-base">Quiz Contract</CardTitle>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => openCreateQuizForm(quizContractAddress, classItem.classAddress)}
-                                  >
-                                    <PlusCircle className="h-3 w-3 mr-1" /> Create Quiz
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => fetchQuizzes(quizContractAddress)}
-                                    disabled={isFetchingQuizzes[quizContractAddress]}
-                                  >
-                                    {isFetchingQuizzes[quizContractAddress] ? "Refreshing..." : "Refresh Quizzes"}
-                                  </Button>
-                                </div>
+                                <h3 className="text-sm font-semibold text-gray-500">
+                                  Contract:{" "}
+                                  {quizContractAddress.substring(0, 6)}...
+                                  {quizContractAddress.substring(38)}
+                                </h3>
+                                <Button
+                                  onClick={() =>
+                                    openCreateQuizForm(
+                                      quizContractAddress,
+                                      classItem.classAddress
+                                    )
+                                  }
+                                  size="sm"
+                                  className="flex items-center gap-1"
+                                >
+                                  <PlusCircle className="h-3 w-3" /> Add Quiz
+                                </Button>
                               </div>
-                              <CardDescription className="text-xs mt-1 break-all">
-                                {quizContractAddress}
-                              </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                              {quizzesByContract[quizContractAddress]?.length > 0 ? (
-                                <div className="space-y-3">
-                                  {quizzesByContract[quizContractAddress].map((quiz) => (
-                                    <div key={quiz.id} className="p-3 border rounded">
-                                      <div className="flex flex-col sm:flex-row justify-between">
-                                        <div>
-                                          <h4 className="font-medium">{quiz.title}</h4>
-                                          <p className="text-sm">{quiz.description}</p>
-                                          <div className="text-xs text-gray-500 mt-1">
-                                            <div>Questions: {quiz.questionCount}</div>
-                                            <div>Expires: {new Date(quiz.expiresAt * 1000).toLocaleString()}</div>
-                                            <div>Status: {quiz.isActive ? 'Active' : 'Inactive'}</div>
+
+                              <Button
+                                onClick={() =>
+                                  fetchQuizzes(quizContractAddress)
+                                }
+                                disabled={
+                                  isFetchingQuizzes[quizContractAddress]
+                                }
+                                variant="outline"
+                                size="sm"
+                                className="w-full mb-2"
+                              >
+                                {isFetchingQuizzes[quizContractAddress]
+                                  ? "Loading quizzes..."
+                                  : "Load Quizzes"}
+                              </Button>
+
+                              {quizzesByContract[quizContractAddress]?.length >
+                              0 ? (
+                                <div className="space-y-3 pl-2 border-l-2 border-gray-200">
+                                  {quizzesByContract[quizContractAddress].map(
+                                    (quiz) => {
+                                      const isExpired =
+                                        Date.now() > quiz.expiresAt;
+                                      const lectureInfo = lecturesByClass[
+                                        classItem.classAddress
+                                      ]?.find((l) => l.id === quiz.lectureId);
+
+                                      return (
+                                        <div
+                                          key={quiz.id}
+                                          className={`p-3 border rounded hover:bg-gray-50 ${
+                                            !quiz.isActive || isExpired
+                                              ? "opacity-70"
+                                              : ""
+                                          }`}
+                                        >
+                                          <div className="space-y-2">
+                                            <div className="flex justify-between">
+                                              <h3 className="font-medium">
+                                                {quiz.title}
+                                              </h3>
+                                              {quiz.isActive ? (
+                                                <span
+                                                  className={`text-xs px-2 py-1 rounded-full ${
+                                                    isExpired
+                                                      ? "bg-red-100 text-red-800"
+                                                      : "bg-green-100 text-green-800"
+                                                  }`}
+                                                >
+                                                  {isExpired
+                                                    ? "Expired"
+                                                    : "Active"}
+                                                </span>
+                                              ) : (
+                                                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-800">
+                                                  Inactive
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            <p className="text-sm">
+                                              {quiz.description}
+                                            </p>
+
+                                            <div className="text-xs text-gray-500">
+                                              <div>
+                                                Questions: {quiz.questionCount}
+                                              </div>
+                                              <div>
+                                                Lecture:{" "}
+                                                {lectureInfo?.topic ||
+                                                  quiz.lectureId}
+                                              </div>
+                                              <div>
+                                                Expires:{" "}
+                                                {new Date(
+                                                  quiz.expiresAt
+                                                ).toLocaleString()}
+                                              </div>
+                                            </div>
+
+                                            <div className="flex space-x-2 pt-2">
+                                              <Button
+                                                onClick={() =>
+                                                  handleViewQuizResults(
+                                                    quiz.id,
+                                                    quizContractAddress,
+                                                    classItem.classAddress,
+                                                    quiz.title
+                                                  )
+                                                }
+                                                size="sm"
+                                                variant="outline"
+                                                className="flex items-center gap-1"
+                                              >
+                                                <Eye className="h-3 w-3" />{" "}
+                                                Results
+                                              </Button>
+
+                                              {quiz.isActive && (
+                                                <Button
+                                                  onClick={() =>
+                                                    handleDeactivateQuiz(
+                                                      quiz.id,
+                                                      quizContractAddress
+                                                    )
+                                                  }
+                                                  size="sm"
+                                                  variant="destructive"
+                                                  className="flex items-center gap-1"
+                                                >
+                                                  Deactivate
+                                                </Button>
+                                              )}
+                                            </div>
                                           </div>
                                         </div>
-                                        <div className="flex flex-row sm:flex-col gap-2 mt-2 sm:mt-0">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleViewQuizResults(quiz.id, quizContractAddress, classItem.classAddress, quiz.title)}
-                                            className="text-xs"
-                                          >
-                                            View Results
-                                          </Button>
-                                          {quiz.isActive && (
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              onClick={() => handleDeactivateQuiz(quiz.id, quizContractAddress)}
-                                              className="text-xs"
-                                            >
-                                              Deactivate
-                                            </Button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
+                                      );
+                                    }
+                                  )}
                                 </div>
                               ) : (
-                                <div className="text-center p-4 text-gray-500">
-                                  No quizzes available for this contract.
+                                <div className="text-center p-3 text-gray-500 text-sm">
+                                  No quizzes found for this contract.
                                 </div>
                               )}
-                            </CardContent>
-                          </Card>
-                        ))
-                      ) : (
-                        <div className="text-center p-4 text-gray-500">
-                          No quiz contracts linked to this class yet.
-                        </div>
-                      )}
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="notes" className="pt-4">
-                    {renderNotesSection(classItem.classAddress, classItem.name)}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center p-4 text-gray-500">
+                        No quiz contracts linked to this class.
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
               </CardContent>
