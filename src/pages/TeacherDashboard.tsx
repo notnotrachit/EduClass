@@ -25,6 +25,8 @@ import {
   deployQuizContract,
   linkQuizToClass,
   getClassQuizzes,
+  getNotesContractForClass,
+  createNotesContract
 } from "@/lib/contractService";
 import { useWalletContext } from "@/context/WalletContext";
 import QRious from "qrious";
@@ -34,15 +36,9 @@ import StudentForm from "../components/StudentForm";
 import CreateClassForm from "../components/CreateClassForm";
 import CreateQuizForm from "../components/CreateQuizForm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  PlusCircle,
-  GraduationCap,
-  BookOpen,
-  Edit,
-  Eye,
-  FilePieChart,
-  Link,
-} from "lucide-react";
+ "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { PlusCircle, GraduationCap, BookOpen, Edit, Eye, FilePieChart, Link, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ethers } from "ethers";
@@ -106,6 +102,10 @@ interface QuizResultsByStudent {
   attemptedAt: number;
 }
 
+interface NotesContractsByClass {
+  [classAddress: string]: string;
+}
+
 export function TeacherDashboard() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [confirmationMessage, setConfirmationMessage] = useState("");
@@ -152,6 +152,10 @@ export function TeacherDashboard() {
   }>({});
   const [newQuizContractAddress, setNewQuizContractAddress] = useState("");
 
+  // Notes related state
+  const [notesContractsByClass, setNotesContractsByClass] = useState<NotesContractsByClass>({});
+  const [isCreatingNotesContract, setIsCreatingNotesContract] = useState(false);
+
   const { provider, address } = useWalletContext();
 
   useEffect(() => {
@@ -192,6 +196,19 @@ export function TeacherDashboard() {
               `Error fetching quiz contracts for class ${classItem.classAddress}:`,
               error
             );
+          }
+          
+          // Get notes contract for this class
+          try {
+            const notesContract = await getNotesContractForClass(classItem.classAddress, provider);
+            if (notesContract && notesContract !== '0x0000000000000000000000000000000000000000') {
+              setNotesContractsByClass((prev) => ({
+                ...prev,
+                [classItem.classAddress]: notesContract
+              }));
+            }
+          } catch (error) {
+            console.error(`Error fetching notes contract for class ${classItem.classAddress}:`, error);
           }
         }
       } catch (error) {
@@ -883,11 +900,86 @@ export function TeacherDashboard() {
     setIsPopupOpen(true);
   };
 
+  const handleCreateNotesContract = async (classAddress: string, className: string) => {
+    try {
+      setIsCreatingNotesContract(true);
+      
+      const notesContractAddress = await createNotesContract(address, className, classAddress, provider);
+      
+      if (notesContractAddress) {
+        setNotesContractsByClass((prev) => ({
+          ...prev,
+          [classAddress]: notesContractAddress
+        }));
+        
+        setConfirmationMessage("Notes contract created successfully!");
+      } else {
+        setConfirmationMessage("Failed to create notes contract. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error creating notes contract:", error);
+      setConfirmationMessage("Failed to create notes contract. Please try again.");
+    } finally {
+      setIsCreatingNotesContract(false);
+    }
+  };
+
+  const renderNotesSection = (classAddress: string, className: string) => {
+    const notesContractAddress = notesContractsByClass[classAddress];
+    
+    if (!notesContractAddress) {
+      return (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-medium">Notes Management</h3>
+            <Button 
+              onClick={() => handleCreateNotesContract(classAddress, className)}
+              disabled={isCreatingNotesContract}
+            >
+              {isCreatingNotesContract ? "Creating..." : "Create Notes Contract"}
+            </Button>
+          </div>
+          <p className="text-muted-foreground">
+            Create a Notes contract to enable students to upload and share their notes as NFTs.
+          </p>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-medium">Notes Management</h3>
+          <p className="text-sm text-green-600">Notes enabled</p>
+        </div>
+        
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle>Student Notes</CardTitle>
+              <Badge variant="outline">
+                Contract: {notesContractAddress.slice(0, 6)}...{notesContractAddress.slice(-4)}
+              </Badge>
+            </div>
+            <CardDescription>
+              Students can share and purchase notes directly from each other
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Notes sharing is enabled for this class.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-semibold">Teacher Dashboard</h1>
-        <Button onClick={openCreateClassForm}>Create New Class</Button>
+        <Button onClick={openCreateClassForm}>
+          <PlusCircle className="h-4 w-4 mr-2" /> New Class
+        </Button>
       </div>
 
       {confirmationMessage && (
@@ -897,35 +989,54 @@ export function TeacherDashboard() {
       )}
 
       {isLoadingInitialData ? (
-        <div className="text-center p-10">Loading classes...</div>
+        <div className="text-center p-10">Loading your classes...</div>
       ) : classes.length === 0 ? (
         <div className="text-center p-10">
-          <p className="mb-4">
-            No classes found. Create your first class to get started.
-          </p>
-          <Button onClick={openCreateClassForm}>Create New Class</Button>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <GraduationCap className="mx-auto h-12 w-12 text-primary mb-4" />
+            <h2 className="text-xl font-semibold mb-2">
+              Create Your First Class
+            </h2>
+            <p className="text-gray-500 mb-4">
+              Get started by creating your first class to manage students and
+              take attendance.
+            </p>
+            <Button onClick={openCreateClassForm}>
+              <PlusCircle className="h-4 w-4 mr-2" /> Create Class
+            </Button>
+          </motion.div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {classes.map((classItem) => (
+        <div className="grid grid-cols-1 gap-6">
+          {classes.map((classItem, index) => (
             <Card key={classItem.classAddress} className="overflow-hidden">
-              <CardHeader className="bg-gray-50">
+              <CardHeader>
                 <CardTitle>{classItem.name}</CardTitle>
+                <CardDescription>
+                  Class Address: {classItem.classAddress}
+                </CardDescription>
               </CardHeader>
-              <CardContent className="p-0">
-                <Tabs defaultValue="lectures">
+              <CardContent>
+                <Tabs defaultValue="students">
+
                   <TabsList className="w-full">
-                    <TabsTrigger value="lectures" className="flex-1">
-                      <BookOpen className="h-4 w-4 mr-2" /> Lectures
-                    </TabsTrigger>
                     <TabsTrigger value="students" className="flex-1">
                       <GraduationCap className="h-4 w-4 mr-2" /> Students
+                    </TabsTrigger>
+                    <TabsTrigger value="lectures" className="flex-1">
+                      <BookOpen className="h-4 w-4 mr-2" /> Lectures & Attendance
                     </TabsTrigger>
                     <TabsTrigger value="quizzes" className="flex-1">
                       <FilePieChart className="h-4 w-4 mr-2" /> Quizzes
                     </TabsTrigger>
+                    <TabsTrigger value="notes" className="flex-1">
+                      <FileText className="h-4 w-4 mr-2" /> Notes
+                    </TabsTrigger>
                   </TabsList>
-
                   <TabsContent value="lectures" className="p-4">
                     <div className="mb-4">
                       <div className="flex items-center space-x-2 mb-2">
@@ -956,9 +1067,9 @@ export function TeacherDashboard() {
                       </div>
                     </div>
 
+
                     <Button
-                      onClick={() => fetchLectures(classItem.classAddress)}
-                      disabled={isFetchingLectures[classItem.classAddress]}
+                      onClick={() => openMintForm(classItem.classAddress)}
                       variant="outline"
                       className="w-full mb-4"
                     >

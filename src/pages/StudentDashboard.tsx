@@ -3,13 +3,16 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { getEligibleClasses, getLectures, getOwnAttendance, markAttendance, getQuizzes, getQuizzesByLecture, getQuizQuestions, submitQuizAnswers, getQuizResults, getClassQuizzes } from "@/lib/contractService";
+import { getEligibleClasses, getLectures, getOwnAttendance, markAttendance, getQuizzes, getQuizzesByLecture, getQuizQuestions, submitQuizAnswers, getQuizResults, getClassQuizzes, getNotesContractForClass } from "@/lib/contractService";
 import { useWalletContext } from "@/context/WalletContext";
 import Popup from "../components/Popup";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, FilePieChart } from "lucide-react";
+import { BookOpen, FilePieChart, FileText } from "lucide-react";
 import TakeQuizForm from "../components/TakeQuizForm";
 import QuizResults from "../components/QuizResults";
+import UploadNotesForm from "../components/UploadNotesForm";
+import NotesMarketplace from "../components/NotesMarketplace";
+import MyNotes from "../components/MyNotes";
 
 interface Class {
   classAddress: string;
@@ -71,6 +74,10 @@ interface PopupContentType {
   content: React.ReactNode;
 }
 
+interface NotesContractsByClass {
+  [classAddress: string]: string;
+}
+
 export function StudentDashboard() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [selectedClass, setSelectedClass] = useState<Class | null>(null);
@@ -98,6 +105,10 @@ export function StudentDashboard() {
   const [isFetchingQuizQuestions, setIsFetchingQuizQuestions] = useState(false);
   const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
   const [quizResultsByContract, setQuizResultsByContract] = useState<QuizResultsByContract>({});
+
+  // Notes related state
+  const [notesContractsByClass, setNotesContractsByClass] = useState<NotesContractsByClass>({});
+  const [activeTab, setActiveTab] = useState("attendance");
 
   const { provider, address } = useWalletContext();
 
@@ -137,6 +148,19 @@ export function StudentDashboard() {
               }
             } catch (error) {
               console.error(`Error fetching quiz contracts for class ${classItem.classAddress}:`, error);
+            }
+            
+            // Get notes contract for this class
+            try {
+              const notesContract = await getNotesContractForClass(classItem.classAddress, provider);
+              if (notesContract && notesContract !== '0x0000000000000000000000000000000000000000') {
+                setNotesContractsByClass((prev) => ({
+                  ...prev,
+                  [classItem.classAddress]: notesContract
+                }));
+              }
+            } catch (error) {
+              console.error(`Error fetching notes contract for class ${classItem.classAddress}:`, error);
             }
           }
         }
@@ -387,6 +411,98 @@ export function StudentDashboard() {
     }
   };
 
+  const handleUploadNotes = () => {
+    if (!selectedClass || !notesContractsByClass[selectedClass.classAddress]) {
+      setConfirmationMessage("Notes feature is not available for this class.");
+      return;
+    }
+    
+    const lectures = lecturesByClass[selectedClass.classAddress] || [];
+    
+    setPopupContent({
+      title: "Upload Notes",
+      content: (
+        <UploadNotesForm 
+          lectures={lectures}
+          notesContractAddress={notesContractsByClass[selectedClass.classAddress]}
+          onSuccess={() => {
+            setIsPopupOpen(false);
+            setConfirmationMessage("Notes uploaded successfully! They will be reviewed by the instructor.");
+          }}
+        />
+      )
+    });
+    
+    setIsPopupOpen(true);
+  };
+
+  const renderNotesTabs = () => {
+    if (!selectedClass) {
+      return <p>Please select a class</p>;
+    }
+    
+    const notesContractAddress = notesContractsByClass[selectedClass.classAddress];
+    
+    if (!notesContractAddress) {
+      return (
+        <div className="text-center py-12">
+          <FileText className="h-12 w-12 mx-auto text-gray-400" />
+          <h3 className="mt-4 text-lg font-medium">Notes Not Available</h3>
+          <p className="mt-2 text-sm text-gray-500">
+            The notes feature is not available for this class.
+          </p>
+        </div>
+      );
+    }
+    
+    return (
+      <Tabs defaultValue="marketplace" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="marketplace">Marketplace</TabsTrigger>
+          <TabsTrigger value="my-notes">My Notes</TabsTrigger>
+          <TabsTrigger value="upload">Upload Notes</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="marketplace" className="mt-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold">Notes Marketplace</h2>
+          </div>
+          <NotesMarketplace notesContractAddress={notesContractAddress} />
+        </TabsContent>
+        
+        <TabsContent value="my-notes" className="mt-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold">My Notes</h2>
+          </div>
+          <MyNotes notesContractAddress={notesContractAddress} />
+        </TabsContent>
+        
+        <TabsContent value="upload" className="mt-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold">Upload Notes</h2>
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Share Your Notes</CardTitle>
+              <CardDescription>
+                Upload your notes as a PDF to share with classmates. Your notes will be reviewed by the instructor before becoming available.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <UploadNotesForm 
+                lectures={lecturesByClass[selectedClass.classAddress] || []}
+                notesContractAddress={notesContractAddress}
+                onSuccess={() => {
+                  setConfirmationMessage("Notes uploaded successfully! They will be reviewed by the instructor.");
+                }}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    );
+  };
+
   const closePopup = () => {
     setIsPopupOpen(false);
     setPopupContent(null);
@@ -405,22 +521,8 @@ export function StudentDashboard() {
         </div>
       );
     }
-    
-    // Count total quizzes across all contracts
-    const totalQuizzes = quizContracts.reduce((count, contractAddress) => {
-      const quizzes = quizzesByContract[contractAddress] || [];
-      return count + quizzes.filter(quiz => quiz.isActive).length;
-    }, 0);
-    
-    if (totalQuizzes === 0) {
-      return (
-        <div className="text-center p-4 text-gray-500">
-          No active quizzes available for this class.
-        </div>
-      );
-    }
-    
-    // Render all quizzes from all contracts
+
+    // Render
     return (
       <div className="space-y-3">
         {quizContracts.map(contractAddress => {
@@ -508,136 +610,149 @@ export function StudentDashboard() {
 
   // Render
   return (
-    <div className="container mx-auto p-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">Student Dashboard</h1>
-        {classes.length > 1 && (
-          <div className="flex items-center space-x-2">
-            <span className="text-gray-500">Select Class:</span>
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-6">Student Dashboard</h1>
+      
+      {isLoadingInitialData ? (
+        <div className="flex justify-center items-center h-64">
+          <p>Loading classes...</p>
+        </div>
+      ) : (
+        <>
+          <div className="mb-6">
+            <label htmlFor="classSelect" className="block text-sm font-medium mb-2">
+              Select Class
+            </label>
             <select
-              value={selectedClass?.classAddress || ""}
+              id="classSelect"
+              className="w-full md:w-1/2 p-2 border rounded-md"
+              value={selectedClass ? selectedClass.classAddress : ""}
               onChange={(e) => {
-                const selected = classes.find(
+                const selectedClassObj = classes.find(
                   (c) => c.classAddress === e.target.value
                 );
-                if (selected) {
-                  setSelectedClass(selected);
-                }
+                setSelectedClass(selectedClassObj || null);
               }}
-              className="border rounded p-2"
             >
+              <option value="">Select a class</option>
               {classes.map((classItem) => (
                 <option key={classItem.classAddress} value={classItem.classAddress}>
-                  {classItem.name}
+                  {classItem.name} ({classItem.symbol})
                 </option>
               ))}
             </select>
           </div>
-        )}
-      </div>
 
-      {confirmationMessage && (
-        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4">
-          {confirmationMessage}
-        </div>
-      )}
+          {confirmationMessage && (
+            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+              {confirmationMessage}
+            </div>
+          )}
 
-      {isLoadingInitialData ? (
-        <div className="text-center p-10">Loading your classes...</div>
-      ) : classes.length === 0 ? (
-        <div className="text-center p-10">
-          <p>You are not enrolled in any classes.</p>
-        </div>
-      ) : (
-        <div>
           {selectedClass && (
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle>{selectedClass.name}</CardTitle>
-                <CardDescription>
-                  You are enrolled in this class
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Tabs defaultValue="lectures">
-                  <TabsList className="w-full">
-                    <TabsTrigger value="lectures" className="flex-1">
-                      <BookOpen className="h-4 w-4 mr-2" /> Lectures & Attendance
-                    </TabsTrigger>
-                    <TabsTrigger value="quizzes" className="flex-1">
-                      <FilePieChart className="h-4 w-4 mr-2" /> Quizzes
-                    </TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="lectures" className="pt-4">
-                    <Button
-                      onClick={() => fetchLectures(selectedClass.classAddress)}
-                      disabled={isFetchingLectures[selectedClass.classAddress]}
-                      variant="outline"
-                      className="w-full mb-4"
-                    >
-                      {isFetchingLectures[selectedClass.classAddress]
-                        ? "Loading lectures..."
-                        : "Refresh Lectures"}
-                    </Button>
-                    
-                    {lecturesByClass[selectedClass.classAddress]?.length > 0 ? (
-                      <div className="space-y-3">
-                        {lecturesByClass[selectedClass.classAddress].map((lecture, index) => {
-                          const hasAttendance = attendanceByClass[selectedClass.classAddress]?.[index];
-                          
-                          return (
-                            <div key={lecture.id} className="p-3 border rounded">
-                              <div className="flex justify-between items-center">
-                                <div>
-                                  <h3 className="font-medium">{lecture.topic}</h3>
-                                  <p className="text-sm text-gray-500">ID: {lecture.id}</p>
-                                </div>
-                                <div className="flex items-center space-x-3">
-                                  {hasAttendance ? (
-                                    <span className="text-green-600 font-medium">
-                                      Attendance Marked ✓
-                                    </span>
-                                  ) : (
-                                    <Button
-                                      onClick={() => handleMarkAttendance(lecture.id, selectedClass.classAddress)}
-                                      disabled={isMarkingAttendance[`${selectedClass.classAddress}-${lecture.id}`]}
-                                      size="sm"
-                                    >
-                                      {isMarkingAttendance[`${selectedClass.classAddress}-${lecture.id}`]
-                                        ? "Marking..."
-                                        : "Mark Attendance"}
-                                    </Button>
-                                  )}
-                                </div>
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="mb-8">
+                <TabsTrigger value="attendance">
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  Attendance
+                </TabsTrigger>
+                <TabsTrigger value="quizzes">
+                  <FilePieChart className="mr-2 h-4 w-4" />
+                  Quizzes
+                </TabsTrigger>
+                <TabsTrigger value="notes">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Notes
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="attendance">
+                <div className="grid grid-cols-1 gap-6">
+                  <h2 className="text-2xl font-bold">Attendance</h2>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Lectures</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {isFetchingLectures[selectedClass.classAddress] ? (
+                        <p>Loading lectures...</p>
+                      ) : lecturesByClass[selectedClass.classAddress]?.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {lecturesByClass[selectedClass.classAddress].map((lecture) => (
+                            <Card key={lecture.id} className="overflow-hidden">
+                              <CardHeader className="pb-2">
+                                <CardTitle className="text-lg">{lecture.topic}</CardTitle>
+                              </CardHeader>
+                              <CardContent className="pb-2">
+                                <p className="text-sm">
+                                  Lecture ID: {lecture.id}
+                                </p>
+                              </CardContent>
+                              <div className="p-4 pt-0 flex justify-end">
+                                {attendanceByClass[selectedClass.classAddress]?.[
+                                  lecture.id - 1
+                                ] ? (
+                                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                                    Attended
+                                  </span>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleMarkAttendance(
+                                        lecture.id,
+                                        selectedClass.classAddress
+                                      )
+                                    }
+                                    disabled={
+                                      isMarkingAttendance[
+                                        `${selectedClass.classAddress}-${lecture.id}`
+                                      ]
+                                    }
+                                  >
+                                    {isMarkingAttendance[
+                                      `${selectedClass.classAddress}-${lecture.id}`
+                                    ]
+                                      ? "Marking..."
+                                      : "Mark Attendance"}
+                                  </Button>
+                                )}
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="text-center p-4 text-gray-500">
-                        No lectures available for this class.
-                      </div>
-                    )}
-                  </TabsContent>
-                  
-                  <TabsContent value="quizzes" className="pt-4">
+                            </Card>
+                          ))}
+                        </div>
+                      ) : (
+                        <p>No lectures found for this class.</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="quizzes">
+                <div className="grid grid-cols-1 gap-6">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold">Quizzes</h2>
                     <Button
-                      onClick={() => refreshQuizzes(selectedClass.classAddress)}
                       variant="outline"
-                      className="w-full mb-4"
+                      onClick={() => refreshQuizzes(selectedClass.classAddress)}
                     >
                       Refresh Quizzes
                     </Button>
-                    
-                    {renderQuizzes(selectedClass.classAddress)}
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
+                  </div>
+                  {renderQuizzes(selectedClass.classAddress)}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="notes">
+                <div className="grid grid-cols-1 gap-6">
+                  {renderNotesTabs()}
+                </div>
+              </TabsContent>
+            </Tabs>
           )}
-        </div>
+        </>
       )}
 
       {isPopupOpen && popupContent && (
