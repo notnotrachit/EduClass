@@ -920,47 +920,82 @@ export function TeacherDashboard() {
 
   const openLinkQuizContractForm = (classAddress: string) => {
     setPopupContent({
-      title: "Link Quiz Contract",
+      title: "Quiz Management",
       content: (
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="quizContractAddress">Quiz Contract Address</Label>
-            <Input
-              id="quizContractAddress"
-              value={newQuizContractAddress}
-              onChange={(e) => setNewQuizContractAddress(e.target.value)}
-              placeholder="Enter quiz contract address"
-              className="w-full"
-            />
-          </div>
-
-          <Button
-            onClick={() =>
-              handleLinkQuizContract(classAddress, newQuizContractAddress)
-            }
-            disabled={isLinkingQuizContract}
-            className="w-full"
-          >
-            {isLinkingQuizContract ? "Linking..." : "Link Quiz Contract"}
-          </Button>
-
-          <div className="text-center text-sm text-muted-foreground mt-2">
-            <p>Don't have a quiz contract? Deploy one first.</p>
+          {newQuizContractAddress ? (
             <Button
-              onClick={handleDeployQuizContract}
-              disabled={isDeployingQuizContract}
-              variant="outline"
-              className="mt-2 w-full"
+              onClick={() =>
+                handleLinkQuizContract(classAddress, newQuizContractAddress)
+              }
+              disabled={isLinkingQuizContract}
+              className="w-full"
             >
-              {isDeployingQuizContract
-                ? "Deploying..."
-                : "Deploy New Quiz Contract"}
+              {isLinkingQuizContract ? "Linking..." : "Link Existing Contract"}
             </Button>
-          </div>
+          ) : (
+            <Button
+              onClick={() => handleDeployAndLinkQuizContract(classAddress)}
+              disabled={isDeployingQuizContract || isLinkingQuizContract}
+              className="w-full"
+            >
+              {isDeployingQuizContract 
+                ? "Deploying Contract..." 
+                : isLinkingQuizContract 
+                  ? "Linking Contract..." 
+                  : "Enable Quiz"}
+            </Button>
+          )}
         </div>
       ),
     });
     setIsPopupOpen(true);
+  };
+
+  // New function to handle both deployment and linking in one flow
+  const handleDeployAndLinkQuizContract = async (classAddress: string) => {
+    try {
+      // First show deploying state
+      setIsDeployingQuizContract(true);
+      setConfirmationMessage("Deploying new quiz contract...");
+      
+      // Deploy the quiz contract
+      const quizContractAddress = await deployQuizContract(address, provider);
+      
+      if (!quizContractAddress) {
+        throw new Error("Failed to deploy quiz contract - no address returned");
+      }
+      
+      setConfirmationMessage(`Quiz contract deployed at: ${quizContractAddress}. Now linking to class...`);
+      
+      // Then link it to the class
+      setIsLinkingQuizContract(true);
+      setIsDeployingQuizContract(false);
+      
+      await linkQuizToClass(classAddress, quizContractAddress, provider);
+      
+      // Update quiz contracts for this class
+      const quizContracts = await getClassQuizzes(classAddress, provider);
+      setQuizContractsByClass((prev) => ({
+        ...prev,
+        [classAddress]: quizContracts,
+      }));
+      
+      // Fetch quizzes for the newly linked contract
+      await fetchQuizzes(quizContractAddress);
+      
+      setConfirmationMessage("Quiz contract successfully deployed and linked!");
+      setNewQuizContractAddress("");
+      setIsPopupOpen(false);
+    } catch (error) {
+      console.error("Error in deploy and link process:", error);
+      setConfirmationMessage(
+        `Failed to complete the process: ${error.message || "Unknown error"}`
+      );
+    } finally {
+      setIsDeployingQuizContract(false);
+      setIsLinkingQuizContract(false);
+    }
   };
 
   const handleCreateNotesContract = async (
@@ -1234,7 +1269,7 @@ export function TeacherDashboard() {
                       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
                         <h3 className="text-lg font-medium">Quiz Management</h3>
                         <div className="flex flex-col gap-2 sm:flex-row">
-                          <Button
+                          {/* <Button
                             variant="outline"
                             onClick={() =>
                               refreshQuizContracts(classItem.classAddress)
@@ -1242,16 +1277,19 @@ export function TeacherDashboard() {
                             className="w-full sm:w-auto"
                           >
                             Refresh Quiz Contracts
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() =>
-                              openLinkQuizContractForm(classItem.classAddress)
-                            }
-                            className="w-full sm:w-auto"
-                          >
-                            <Link className="h-4 w-4 mr-2" /> Link Quiz Contract
-                          </Button>
+                          </Button> */}
+                          {(!quizContractsByClass[classItem.classAddress] || 
+                            quizContractsByClass[classItem.classAddress]?.length === 0) && (
+                            <Button
+                              variant="outline"
+                              onClick={() =>
+                                openLinkQuizContractForm(classItem.classAddress)
+                              }
+                              className="w-full sm:w-auto"
+                            >
+                              <Link className="h-4 w-4 mr-2" /> Enable Quiz Module
+                            </Button>
+                          )}
                         </div>
                       </div>
 
