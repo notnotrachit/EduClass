@@ -156,7 +156,7 @@ export function UploadNotesForm({ lectures, notesContractAddress, onSuccess }: U
       </div>
       
       <div className="space-y-2">
-        <Label htmlFor="price">Price (ETH)</Label>
+        <Label htmlFor="price">Price (EDU)</Label>
         <Input 
           id="price" 
           type="number"

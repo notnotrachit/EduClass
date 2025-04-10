@@ -201,7 +201,7 @@ export function MyNotes({ notesContractAddress }: MyNotesProps) {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <span>{note.price} ETH</span>
+                      <span>{note.price} EDU</span>
                       <Button 
                         variant="ghost" 
                         size="sm"
@@ -289,7 +289,7 @@ export function MyNotes({ notesContractAddress }: MyNotesProps) {
                 
                 <div className="flex items-center text-muted-foreground">
                   <Tag className="h-4 w-4 mr-1" />
-                  <span>Price: {note.price} ETH</span>
+                  <span>Price: {note.price} EDU</span>
                 </div>
               </div>
             </CardContent>

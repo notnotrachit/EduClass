@@ -623,7 +623,8 @@ export function TeacherDashboard() {
     setIsPopupOpen(true);
   };
 
-  const fetchQuizResultsByQuiz = async (
+  // New function that directly returns results without relying on state updates
+  const fetchQuizResultsByQuizDirect = async (
     quizId: number,
     quizContractAddress: string,
     classAddress: string
@@ -637,11 +638,13 @@ export function TeacherDashboard() {
         signer
       );
       const totalSupply = await classContract.totalSupply();
+      console.log(`Total students in class: ${totalSupply.toNumber()}`);
 
-      // Get all student addresses and names
+      // Initialize empty arrays for student data
       const addresses = [];
       const names = [];
 
+      // Get all student addresses and names
       for (let i = 1; i <= totalSupply.toNumber(); i++) {
         try {
           const studentAddress = await classContract.ownerOf(i);
@@ -653,14 +656,17 @@ export function TeacherDashboard() {
         }
       }
 
+      console.log(`Found ${addresses.length} students in the class`);
+
       // Get results for each student
       const results: QuizResultsByStudent[] = [];
 
+      // Process students sequentially (more reliable than parallel processing in this case)
       for (let i = 0; i < addresses.length; i++) {
         try {
           const studentAddress = addresses[i];
           const studentName = names[i];
-
+          
           const result = await getQuizResults(
             quizContractAddress,
             quizId,
@@ -678,21 +684,25 @@ export function TeacherDashboard() {
             });
           }
         } catch (error) {
-          console.error("Error fetching result for student:", error);
+          console.error(`Error fetching result for student ${addresses[i]}:`, error);
         }
       }
+      
+      console.log(`Found ${results.length} students who attempted quiz ${quizId} (direct method)`);
 
-      console.log(
-        `Found ${results.length} students who attempted quiz ${quizId}`
-      );
-
+      // Also update the state for consistency (but we're not relying on it for the UI)
       setQuizResultsByQuiz((prev) => ({
         ...prev,
         [`${quizContractAddress}-${quizId}`]: results,
       }));
+      
+      return results;
     } catch (error) {
       console.error("Error fetching quiz results:", error);
       setConfirmationMessage("Failed to fetch quiz results. Please try again.");
+      
+      // Return empty array to avoid null/undefined issues
+      return [];
     }
   };
 
@@ -718,61 +728,84 @@ export function TeacherDashboard() {
     classAddress: string,
     title: string
   ) => {
-    // Fetch results if not already loaded
-    if (!quizResultsByQuiz[`${quizContractAddress}-${quizId}`]) {
-      await fetchQuizResultsByQuiz(quizId, quizContractAddress, classAddress);
-    }
-
-    const results = quizResultsByQuiz[`${quizContractAddress}-${quizId}`] || [];
-
+    // First show a loading popup
     setPopupContent({
       title: `Results: ${title}`,
       content: (
-        <div className="space-y-4">
-          <div className="text-sm text-muted-foreground mb-4">
-            {results.length}{" "}
-            {results.length === 1 ? "student has" : "students have"} attempted
-            this quiz
-          </div>
-
-          {results.length > 0 ? (
-            <div className="space-y-2">
-              <div className="grid grid-cols-3 font-medium text-sm py-2 border-b">
-                <div>Student</div>
-                <div>Score</div>
-                <div>Completion Time</div>
-              </div>
-
-              {results.map((result, index) => (
-                <div
-                  key={index}
-                  className="grid grid-cols-3 text-sm py-2 border-b border-gray-100"
-                >
-                  <div>{result.name}</div>
-                  <div>
-                    {result.score}/{result.totalQuestions} (
-                    {Math.round((result.score / result.totalQuestions) * 100)}%)
-                  </div>
-                  <div>{new Date(result.attemptedAt).toLocaleString()}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-6 text-muted-foreground">
-              No students have attempted this quiz yet.
-            </div>
-          )}
-
-          <Button
-            onClick={() => downloadQuizResults(quizId, title, results)}
-            className="w-full mt-4"
-          >
-            Download Results CSV
-          </Button>
+        <div className="flex flex-col items-center justify-center py-8">
+          <LoaderCircle className="w-8 h-8 animate-spin mb-4" />
+          <p className="text-sm text-muted-foreground">Loading quiz results...</p>
         </div>
       ),
     });
     setIsPopupOpen(true);
+
+    // Then fetch the results directly without relying on state updates
+    try {
+      // Directly get and use the results
+      const results = await fetchQuizResultsByQuizDirect(quizId, quizContractAddress, classAddress);
+      
+      console.log(`Displaying ${results.length} results for quiz ${quizId} (direct results)`);
+
+      // Update the popup with results
+      setPopupContent({
+        title: `Results: ${title}`,
+        content: (
+          <div className="space-y-4">
+            <div className="text-sm text-muted-foreground mb-4">
+              {results.length}{" "}
+              {results.length === 1 ? "student has" : "students have"} attempted
+              this quiz
+            </div>
+
+            {results.length > 0 ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 font-medium text-sm py-2 border-b">
+                  <div>Student</div>
+                  <div>Score</div>
+                  {/* <div>Completion Time</div> */}
+                </div>
+
+                {results.map((result, index) => (
+                  <div
+                    key={index}
+                    className="grid grid-cols-2 text-sm py-2 border-b border-gray-100"
+                  >
+                    <div>{result.name}</div>
+                    <div>
+                      {result.score}/{result.totalQuestions} (
+                      {Math.round((result.score / result.totalQuestions) * 100)}%)
+                    </div>
+                    {/* <div>{new Date(result.attemptedAt).toLocaleString()}</div> */}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-muted-foreground">
+                No students have attempted this quiz yet.
+              </div>
+            )}
+
+            <Button
+              onClick={() => downloadQuizResults(quizId, title, results)}
+              className="w-full mt-4"
+            >
+              Download Results CSV
+            </Button>
+          </div>
+        ),
+      });
+    } catch (error) {
+      console.error("Error loading quiz results:", error);
+      setPopupContent({
+        title: `Results: ${title}`,
+        content: (
+          <div className="text-center py-6 text-red-500">
+            Error loading quiz results. Please try again.
+          </div>
+        ),
+      });
+    }
   };
 
   const downloadQuizResults = (

@@ -162,7 +162,7 @@ export function NotesMarketplace({ notesContractAddress, selectedLectureId }: No
             <div className="flex justify-between items-start">
               <CardTitle className="text-lg">{note.title}</CardTitle>
               <Badge variant={note.purchased ? "secondary" : "default"}>
-                {note.purchased ? "Purchased" : `${note.price} ETH`}
+                {note.purchased ? "Purchased" : `${note.price} EDU`}
               </Badge>
             </div>
             <CardDescription>{note.description}</CardDescription>
@@ -213,7 +213,7 @@ export function NotesMarketplace({ notesContractAddress, selectedLectureId }: No
                   </>
                 ) : (
                   <>
-                    <Tag className="mr-2 h-4 w-4" /> Purchase ({note.price} ETH)
+                    <Tag className="mr-2 h-4 w-4" /> Purchase ({note.price} EDU)
                   </>
                 )}
               </Button>

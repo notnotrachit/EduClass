@@ -179,7 +179,7 @@ export function NotesApproval({ notesContractAddress }: NotesApprovalProps) {
                     
                     <div className="flex items-center text-muted-foreground">
                       <Tag className="h-4 w-4 mr-1" />
-                      <span>Price: {note.price} ETH</span>
+                      <span>Price: {note.price} EDU</span>
                     </div>
                   </div>
                 </CardContent>
@@ -254,7 +254,7 @@ export function NotesApproval({ notesContractAddress }: NotesApprovalProps) {
                     
                     <div className="flex items-center text-muted-foreground">
                       <Tag className="h-4 w-4 mr-1" />
-                      <span>Price: {note.price} ETH</span>
+                      <span>Price: {note.price} EDU</span>
                     </div>
                     
                     <div className="flex items-center text-muted-foreground">
