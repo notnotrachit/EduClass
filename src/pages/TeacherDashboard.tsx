@@ -2,7 +2,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import {
   createClass,
   mintNFT,
@@ -20,7 +26,7 @@ import {
   linkQuizToClass,
   getClassQuizzes,
   getNotesContractForClass,
-  createNotesContract
+  createNotesContract,
 } from "@/lib/contractService";
 import { useWalletContext } from "@/context/WalletContext";
 import QRious from "qrious";
@@ -31,7 +37,16 @@ import CreateClassForm from "../components/CreateClassForm";
 import CreateQuizForm from "../components/CreateQuizForm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, GraduationCap, BookOpen, Edit, Eye, FilePieChart, Link, FileText } from "lucide-react";
+import {
+  PlusCircle,
+  GraduationCap,
+  BookOpen,
+  Edit,
+  Eye,
+  FilePieChart,
+  Link,
+  FileText,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ethers } from "ethers";
@@ -123,8 +138,12 @@ export function TeacherDashboard() {
   const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
 
   // Quiz related state
-  const [quizzesByContract, setQuizzesByContract] = useState<QuizzesByContract>({});
-  const [quizContractsByClass, setQuizContractsByClass] = useState<{[classAddress: string]: string[]}>({});
+  const [quizzesByContract, setQuizzesByContract] = useState<QuizzesByContract>(
+    {}
+  );
+  const [quizContractsByClass, setQuizContractsByClass] = useState<{
+    [classAddress: string]: string[];
+  }>({});
   const [isFetchingQuizzes, setIsFetchingQuizzes] = useState<{
     [key: string]: boolean;
   }>({});
@@ -141,7 +160,8 @@ export function TeacherDashboard() {
   const [newQuizContractAddress, setNewQuizContractAddress] = useState("");
 
   // Notes related state
-  const [notesContractsByClass, setNotesContractsByClass] = useState<NotesContractsByClass>({});
+  const [notesContractsByClass, setNotesContractsByClass] =
+    useState<NotesContractsByClass>({});
   const [isCreatingNotesContract, setIsCreatingNotesContract] = useState(false);
 
   const { provider, address } = useWalletContext();
@@ -163,10 +183,13 @@ export function TeacherDashboard() {
         // For each class, fetch associated quiz contracts
         for (const classItem of formattedClasses) {
           try {
-            const quizContracts = await getClassQuizzes(classItem.classAddress, provider);
+            const quizContracts = await getClassQuizzes(
+              classItem.classAddress,
+              provider
+            );
             setQuizContractsByClass((prev) => ({
               ...prev,
-              [classItem.classAddress]: quizContracts
+              [classItem.classAddress]: quizContracts,
             }));
 
             // Fetch quizzes for each quiz contract
@@ -174,20 +197,32 @@ export function TeacherDashboard() {
               await fetchQuizzes(quizContractAddress);
             }
           } catch (error) {
-            console.error(`Error fetching quiz contracts for class ${classItem.classAddress}:`, error);
+            console.error(
+              `Error fetching quiz contracts for class ${classItem.classAddress}:`,
+              error
+            );
           }
-          
+
           // Get notes contract for this class
           try {
-            const notesContract = await getNotesContractForClass(classItem.classAddress, provider);
-            if (notesContract && notesContract !== '0x0000000000000000000000000000000000000000') {
+            const notesContract = await getNotesContractForClass(
+              classItem.classAddress,
+              provider
+            );
+            if (
+              notesContract &&
+              notesContract !== "0x0000000000000000000000000000000000000000"
+            ) {
               setNotesContractsByClass((prev) => ({
                 ...prev,
-                [classItem.classAddress]: notesContract
+                [classItem.classAddress]: notesContract,
               }));
             }
           } catch (error) {
-            console.error(`Error fetching notes contract for class ${classItem.classAddress}:`, error);
+            console.error(
+              `Error fetching notes contract for class ${classItem.classAddress}:`,
+              error
+            );
           }
         }
       } catch (error) {
@@ -443,7 +478,7 @@ export function TeacherDashboard() {
       try {
         setIsCreatingClass(true);
         await createClass(formData.name, formData.symbol, provider);
-        
+
         setConfirmationMessage(`Class ${formData.name} created successfully!`);
         setIsPopupOpen(false);
 
@@ -479,23 +514,35 @@ export function TeacherDashboard() {
 
   const fetchQuizzes = async (quizContractAddress: string) => {
     try {
-      setIsFetchingQuizzes((prev) => ({ ...prev, [quizContractAddress]: true }));
+      setIsFetchingQuizzes((prev) => ({
+        ...prev,
+        [quizContractAddress]: true,
+      }));
       const quizzesList = await getQuizzes(quizContractAddress, provider);
       setQuizzesByContract((prev) => ({
         ...prev,
         [quizContractAddress]: quizzesList,
       }));
     } catch (error) {
-      console.error(`Error fetching quizzes for contract ${quizContractAddress}:`, error);
+      console.error(
+        `Error fetching quizzes for contract ${quizContractAddress}:`,
+        error
+      );
       setConfirmationMessage("Failed to fetch quizzes. Please try again.");
     } finally {
-      setIsFetchingQuizzes((prev) => ({ ...prev, [quizContractAddress]: false }));
+      setIsFetchingQuizzes((prev) => ({
+        ...prev,
+        [quizContractAddress]: false,
+      }));
     }
   };
 
-  const openCreateQuizForm = (quizContractAddress: string, classAddress: string) => {
+  const openCreateQuizForm = (
+    quizContractAddress: string,
+    classAddress: string
+  ) => {
     const classLectures = lecturesByClass[classAddress] || [];
-    
+
     const handleFormSubmit = async (formData: {
       title: string;
       description: string;
@@ -509,7 +556,7 @@ export function TeacherDashboard() {
     }) => {
       try {
         setIsCreatingQuiz(true);
-        
+
         // Create the quiz
         const quizId = await createQuiz(
           quizContractAddress,
@@ -519,7 +566,7 @@ export function TeacherDashboard() {
           formData.lectureId,
           provider
         );
-        
+
         // Add questions to the quiz
         for (const question of formData.questions) {
           await addQuizQuestion(
@@ -531,8 +578,10 @@ export function TeacherDashboard() {
             provider
           );
         }
-        
-        setConfirmationMessage(`Quiz "${formData.title}" created successfully!`);
+
+        setConfirmationMessage(
+          `Quiz "${formData.title}" created successfully!`
+        );
         await fetchQuizzes(quizContractAddress);
         setIsPopupOpen(false);
       } catch (error) {
@@ -556,17 +605,25 @@ export function TeacherDashboard() {
     setIsPopupOpen(true);
   };
 
-  const fetchQuizResultsByQuiz = async (quizId: number, quizContractAddress: string, classAddress: string) => {
+  const fetchQuizResultsByQuiz = async (
+    quizId: number,
+    quizContractAddress: string,
+    classAddress: string
+  ) => {
     try {
       // First, attempt to get all students from the class contract
       const signer = provider.getSigner();
-      const classContract = new ethers.Contract(classAddress, ClassContract.abi, signer);
+      const classContract = new ethers.Contract(
+        classAddress,
+        ClassContract.abi,
+        signer
+      );
       const totalSupply = await classContract.totalSupply();
-      
+
       // Get all student addresses and names
       const addresses = [];
       const names = [];
-      
+
       for (let i = 1; i <= totalSupply.toNumber(); i++) {
         try {
           const studentAddress = await classContract.ownerOf(i);
@@ -577,54 +634,58 @@ export function TeacherDashboard() {
           console.error(`Error getting student at index ${i}:`, error);
         }
       }
-      
+
       // Get results for each student
       const results: QuizResultsByStudent[] = [];
-      
+
       for (let i = 0; i < addresses.length; i++) {
         try {
           const studentAddress = addresses[i];
           const studentName = names[i];
-          
+
           const result = await getQuizResults(
             quizContractAddress,
             quizId,
             studentAddress,
             provider
           );
-          
+
           if (result.hasAttempted) {
             results.push({
               address: studentAddress,
               name: studentName,
               score: result.score,
               totalQuestions: result.totalQuestions,
-              attemptedAt: result.attemptedAt
+              attemptedAt: result.attemptedAt,
             });
           }
         } catch (error) {
           console.error("Error fetching result for student:", error);
         }
       }
-      
-      console.log(`Found ${results.length} students who attempted quiz ${quizId}`);
-      
+
+      console.log(
+        `Found ${results.length} students who attempted quiz ${quizId}`
+      );
+
       setQuizResultsByQuiz((prev) => ({
         ...prev,
-        [`${quizContractAddress}-${quizId}`]: results
+        [`${quizContractAddress}-${quizId}`]: results,
       }));
-      
     } catch (error) {
       console.error("Error fetching quiz results:", error);
       setConfirmationMessage("Failed to fetch quiz results. Please try again.");
     }
   };
 
-  const handleDeactivateQuiz = async (quizId: number, quizContractAddress: string) => {
+  const handleDeactivateQuiz = async (
+    quizId: number,
+    quizContractAddress: string
+  ) => {
     try {
       await deactivateQuiz(quizContractAddress, quizId, provider);
       setConfirmationMessage("Quiz deactivated successfully!");
-      
+
       // Refresh quizzes
       await fetchQuizzes(quizContractAddress);
     } catch (error) {
@@ -633,22 +694,29 @@ export function TeacherDashboard() {
     }
   };
 
-  const handleViewQuizResults = async (quizId: number, quizContractAddress: string, classAddress: string, title: string) => {
+  const handleViewQuizResults = async (
+    quizId: number,
+    quizContractAddress: string,
+    classAddress: string,
+    title: string
+  ) => {
     // Fetch results if not already loaded
     if (!quizResultsByQuiz[`${quizContractAddress}-${quizId}`]) {
       await fetchQuizResultsByQuiz(quizId, quizContractAddress, classAddress);
     }
-    
+
     const results = quizResultsByQuiz[`${quizContractAddress}-${quizId}`] || [];
-    
+
     setPopupContent({
       title: `Results: ${title}`,
       content: (
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground mb-4">
-            {results.length} {results.length === 1 ? 'student has' : 'students have'} attempted this quiz
+            {results.length}{" "}
+            {results.length === 1 ? "student has" : "students have"} attempted
+            this quiz
           </div>
-          
+
           {results.length > 0 ? (
             <div className="space-y-2">
               <div className="grid grid-cols-3 font-medium text-sm py-2 border-b">
@@ -656,12 +724,16 @@ export function TeacherDashboard() {
                 <div>Score</div>
                 <div>Completion Time</div>
               </div>
-              
+
               {results.map((result, index) => (
-                <div key={index} className="grid grid-cols-3 text-sm py-2 border-b border-gray-100">
+                <div
+                  key={index}
+                  className="grid grid-cols-3 text-sm py-2 border-b border-gray-100"
+                >
                   <div>{result.name}</div>
                   <div>
-                    {result.score}/{result.totalQuestions} ({Math.round((result.score / result.totalQuestions) * 100)}%)
+                    {result.score}/{result.totalQuestions} (
+                    {Math.round((result.score / result.totalQuestions) * 100)}%)
                   </div>
                   <div>{new Date(result.attemptedAt).toLocaleString()}</div>
                 </div>
@@ -672,8 +744,8 @@ export function TeacherDashboard() {
               No students have attempted this quiz yet.
             </div>
           )}
-          
-          <Button 
+
+          <Button
             onClick={() => downloadQuizResults(quizId, title, results)}
             className="w-full mt-4"
           >
@@ -685,25 +757,36 @@ export function TeacherDashboard() {
     setIsPopupOpen(true);
   };
 
-  const downloadQuizResults = (quizId: number, quizTitle: string, results: QuizResultsByStudent[]) => {
+  const downloadQuizResults = (
+    quizId: number,
+    quizTitle: string,
+    results: QuizResultsByStudent[]
+  ) => {
     const rows = [
-      ['Student Name', 'Address', 'Score', 'Total Questions', 'Percentage', 'Attempted At'],
-      ...results.map(r => [
+      [
+        "Student Name",
+        "Address",
+        "Score",
+        "Total Questions",
+        "Percentage",
+        "Attempted At",
+      ],
+      ...results.map((r) => [
         r.name,
         r.address,
         r.score.toString(),
         r.totalQuestions.toString(),
         `${Math.round((r.score / r.totalQuestions) * 100)}%`,
-        new Date(r.attemptedAt).toLocaleString()
-      ])
+        new Date(r.attemptedAt).toLocaleString(),
+      ]),
     ];
-    
-    const csvContent = rows.map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+
+    const csvContent = rows.map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `Quiz_${quizId}_${quizTitle.replace(/\s+/g, '_')}_Results.csv`;
+    a.download = `Quiz_${quizId}_${quizTitle.replace(/\s+/g, "_")}_Results.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -713,18 +796,20 @@ export function TeacherDashboard() {
       const quizContracts = await getClassQuizzes(classAddress, provider);
       setQuizContractsByClass((prev) => ({
         ...prev,
-        [classAddress]: quizContracts
+        [classAddress]: quizContracts,
       }));
-      
+
       // Fetch quizzes for each contract
       for (const quizContractAddress of quizContracts) {
         await fetchQuizzes(quizContractAddress);
       }
-      
+
       setConfirmationMessage("Quiz contracts refreshed successfully!");
     } catch (error) {
       console.error("Error refreshing quiz contracts:", error);
-      setConfirmationMessage("Failed to refresh quiz contracts. Please try again.");
+      setConfirmationMessage(
+        "Failed to refresh quiz contracts. Please try again."
+      );
     }
   };
 
@@ -734,16 +819,23 @@ export function TeacherDashboard() {
       setIsDeployingQuizContract(true);
       const quizContractAddress = await deployQuizContract(address, provider);
       setNewQuizContractAddress(quizContractAddress);
-      setConfirmationMessage(`Quiz contract deployed at: ${quizContractAddress}`);
+      setConfirmationMessage(
+        `Quiz contract deployed at: ${quizContractAddress}`
+      );
     } catch (error) {
       console.error("Error deploying quiz contract:", error);
-      setConfirmationMessage("Failed to deploy quiz contract. Please try again.");
+      setConfirmationMessage(
+        "Failed to deploy quiz contract. Please try again."
+      );
     } finally {
       setIsDeployingQuizContract(false);
     }
   };
 
-  const handleLinkQuizContract = async (classAddress: string, quizContractAddress: string) => {
+  const handleLinkQuizContract = async (
+    classAddress: string,
+    quizContractAddress: string
+  ) => {
     if (!quizContractAddress) {
       setConfirmationMessage("Please enter a quiz contract address.");
       return;
@@ -752,22 +844,24 @@ export function TeacherDashboard() {
     try {
       setIsLinkingQuizContract(true);
       await linkQuizToClass(classAddress, quizContractAddress, provider);
-      
+
       // Update quiz contracts for this class
       const quizContracts = await getClassQuizzes(classAddress, provider);
       setQuizContractsByClass((prev) => ({
         ...prev,
-        [classAddress]: quizContracts
+        [classAddress]: quizContracts,
       }));
-      
+
       // Fetch quizzes for the newly linked contract
       await fetchQuizzes(quizContractAddress);
-      
+
       setConfirmationMessage("Quiz contract linked successfully!");
       setNewQuizContractAddress("");
     } catch (error) {
       console.error("Error linking quiz contract:", error);
-      setConfirmationMessage("Failed to link quiz contract. Please check the address and try again.");
+      setConfirmationMessage(
+        "Failed to link quiz contract. Please check the address and try again."
+      );
     } finally {
       setIsLinkingQuizContract(false);
     }
@@ -788,15 +882,17 @@ export function TeacherDashboard() {
               className="w-full"
             />
           </div>
-          
-        <Button
-            onClick={() => handleLinkQuizContract(classAddress, newQuizContractAddress)}
+
+          <Button
+            onClick={() =>
+              handleLinkQuizContract(classAddress, newQuizContractAddress)
+            }
             disabled={isLinkingQuizContract}
             className="w-full"
-        >
+          >
             {isLinkingQuizContract ? "Linking..." : "Link Quiz Contract"}
-        </Button>
-          
+          </Button>
+
           <div className="text-center text-sm text-muted-foreground mt-2">
             <p>Don't have a quiz contract? Deploy one first.</p>
             <Button
@@ -805,7 +901,9 @@ export function TeacherDashboard() {
               variant="outline"
               className="mt-2 w-full"
             >
-              {isDeployingQuizContract ? "Deploying..." : "Deploy New Quiz Contract"}
+              {isDeployingQuizContract
+                ? "Deploying..."
+                : "Deploy New Quiz Contract"}
             </Button>
           </div>
         </div>
@@ -814,25 +912,37 @@ export function TeacherDashboard() {
     setIsPopupOpen(true);
   };
 
-  const handleCreateNotesContract = async (classAddress: string, className: string) => {
+  const handleCreateNotesContract = async (
+    classAddress: string,
+    className: string
+  ) => {
     try {
       setIsCreatingNotesContract(true);
-      
-      const notesContractAddress = await createNotesContract(address, className, classAddress, provider);
-      
+
+      const notesContractAddress = await createNotesContract(
+        address,
+        className,
+        classAddress,
+        provider
+      );
+
       if (notesContractAddress) {
         setNotesContractsByClass((prev) => ({
           ...prev,
-          [classAddress]: notesContractAddress
+          [classAddress]: notesContractAddress,
         }));
-        
+
         setConfirmationMessage("Notes contract created successfully!");
       } else {
-        setConfirmationMessage("Failed to create notes contract. Please try again.");
+        setConfirmationMessage(
+          "Failed to create notes contract. Please try again."
+        );
       }
     } catch (error) {
       console.error("Error creating notes contract:", error);
-      setConfirmationMessage("Failed to create notes contract. Please try again.");
+      setConfirmationMessage(
+        "Failed to create notes contract. Please try again."
+      );
     } finally {
       setIsCreatingNotesContract(false);
     }
@@ -840,39 +950,43 @@ export function TeacherDashboard() {
 
   const renderNotesSection = (classAddress: string, className: string) => {
     const notesContractAddress = notesContractsByClass[classAddress];
-    
+
     if (!notesContractAddress) {
       return (
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-medium">Notes Management</h3>
-            <Button 
+            <Button
               onClick={() => handleCreateNotesContract(classAddress, className)}
               disabled={isCreatingNotesContract}
             >
-              {isCreatingNotesContract ? "Creating..." : "Create Notes Contract"}
+              {isCreatingNotesContract
+                ? "Creating..."
+                : "Create Notes Contract"}
             </Button>
           </div>
           <p className="text-muted-foreground">
-            Create a Notes contract to enable students to upload and share their notes as NFTs.
+            Create a Notes contract to enable students to upload and share their
+            notes as NFTs.
           </p>
         </div>
       );
     }
-    
+
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="text-lg font-medium">Notes Management</h3>
           <p className="text-sm text-green-600">Notes enabled</p>
         </div>
-        
+
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
               <CardTitle>Student Notes</CardTitle>
               <Badge variant="outline">
-                Contract: {notesContractAddress.slice(0, 6)}...{notesContractAddress.slice(-4)}
+                Contract: {notesContractAddress.slice(0, 6)}...
+                {notesContractAddress.slice(-4)}
               </Badge>
             </div>
             <CardDescription>
@@ -880,7 +994,9 @@ export function TeacherDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">Notes sharing is enabled for this class.</p>
+            <p className="text-sm text-muted-foreground">
+              Notes sharing is enabled for this class.
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -941,7 +1057,8 @@ export function TeacherDashboard() {
                       <GraduationCap className="h-4 w-4 mr-2" /> Students
                     </TabsTrigger>
                     <TabsTrigger value="lectures" className="flex-1">
-                      <BookOpen className="h-4 w-4 mr-2" /> Lectures & Attendance
+                      <BookOpen className="h-4 w-4 mr-2" /> Lectures &
+                      Attendance
                     </TabsTrigger>
                     <TabsTrigger value="quizzes" className="flex-1">
                       <FilePieChart className="h-4 w-4 mr-2" /> Quizzes
@@ -1030,7 +1147,8 @@ export function TeacherDashboard() {
                                         )
                                       }
                                     >
-                                      <QRious className="h-4 w-4 mr-1" /> QR Code
+                                      <QRious className="h-4 w-4 mr-1" /> QR
+                                      Code
                                     </Button>
                                     <Button
                                       variant="outline"
@@ -1066,96 +1184,152 @@ export function TeacherDashboard() {
                         <div className="flex flex-col gap-2 sm:flex-row">
                           <Button
                             variant="outline"
-                            onClick={() => refreshQuizContracts(classItem.classAddress)}
+                            onClick={() =>
+                              refreshQuizContracts(classItem.classAddress)
+                            }
                             className="w-full sm:w-auto"
                           >
                             Refresh Quiz Contracts
                           </Button>
-                          <Button 
+                          <Button
                             variant="outline"
-                            onClick={() => openLinkQuizContractForm(classItem.classAddress)}
+                            onClick={() =>
+                              openLinkQuizContractForm(classItem.classAddress)
+                            }
                             className="w-full sm:w-auto"
                           >
                             <Link className="h-4 w-4 mr-2" /> Link Quiz Contract
                           </Button>
                         </div>
                       </div>
-                      
-                      {(quizContractsByClass[classItem.classAddress]?.length > 0) ? (
-                        quizContractsByClass[classItem.classAddress].map((quizContractAddress) => (
-                          <Card key={quizContractAddress}>
-                            <CardHeader className="pb-2">
-                              <div className="flex justify-between items-center">
-                                <CardTitle className="text-base">Quiz Contract</CardTitle>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => openCreateQuizForm(quizContractAddress, classItem.classAddress)}
-                                  >
-                                    <PlusCircle className="h-3 w-3 mr-1" /> Create Quiz
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => fetchQuizzes(quizContractAddress)}
-                                    disabled={isFetchingQuizzes[quizContractAddress]}
-                                  >
-                                    {isFetchingQuizzes[quizContractAddress] ? "Refreshing..." : "Refresh Quizzes"}
-                                  </Button>
+
+                      {quizContractsByClass[classItem.classAddress]?.length >
+                      0 ? (
+                        quizContractsByClass[classItem.classAddress].map(
+                          (quizContractAddress) => (
+                            <Card key={quizContractAddress}>
+                              <CardHeader className="pb-2">
+                                <div className="flex justify-between items-center">
+                                  <CardTitle className="text-base">
+                                    Quiz Contract
+                                  </CardTitle>
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        openCreateQuizForm(
+                                          quizContractAddress,
+                                          classItem.classAddress
+                                        )
+                                      }
+                                    >
+                                      <PlusCircle className="h-3 w-3 mr-1" />{" "}
+                                      Create Quiz
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        fetchQuizzes(quizContractAddress)
+                                      }
+                                      disabled={
+                                        isFetchingQuizzes[quizContractAddress]
+                                      }
+                                    >
+                                      {isFetchingQuizzes[quizContractAddress]
+                                        ? "Refreshing..."
+                                        : "Refresh Quizzes"}
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
-                              <CardDescription className="text-xs mt-1 break-all">
-                                {quizContractAddress}
-                              </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                              {quizzesByContract[quizContractAddress]?.length > 0 ? (
-                                <div className="space-y-3">
-                                  {quizzesByContract[quizContractAddress].map((quiz) => (
-                                    <div key={quiz.id} className="p-3 border rounded">
-                                      <div className="flex flex-col sm:flex-row justify-between">
-                                        <div>
-                                          <h4 className="font-medium">{quiz.title}</h4>
-                                          <p className="text-sm">{quiz.description}</p>
-                                          <div className="text-xs text-gray-500 mt-1">
-                                            <div>Questions: {quiz.questionCount}</div>
-                                            <div>Expires: {new Date(quiz.expiresAt * 1000).toLocaleString()}</div>
-                                            <div>Status: {quiz.isActive ? 'Active' : 'Inactive'}</div>
+                                <CardDescription className="text-xs mt-1 break-all">
+                                  {quizContractAddress}
+                                </CardDescription>
+                              </CardHeader>
+                              <CardContent>
+                                {quizzesByContract[quizContractAddress]
+                                  ?.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {quizzesByContract[quizContractAddress].map(
+                                      (quiz) => (
+                                        <div
+                                          key={quiz.id}
+                                          className="p-3 border rounded"
+                                        >
+                                          <div className="flex flex-col sm:flex-row justify-between">
+                                            <div>
+                                              <h4 className="font-medium">
+                                                {quiz.title}
+                                              </h4>
+                                              <p className="text-sm">
+                                                {quiz.description}
+                                              </p>
+                                              <div className="text-xs text-gray-500 mt-1">
+                                                <div>
+                                                  Questions:{" "}
+                                                  {quiz.questionCount}
+                                                </div>
+                                                <div>
+                                                  Expires:{" "}
+                                                  {new Date(
+                                                    quiz.expiresAt * 1000
+                                                  ).toLocaleString()}
+                                                </div>
+                                                <div>
+                                                  Status:{" "}
+                                                  {quiz.isActive
+                                                    ? "Active"
+                                                    : "Inactive"}
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <div className="flex flex-row sm:flex-col gap-2 mt-2 sm:mt-0">
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() =>
+                                                  handleViewQuizResults(
+                                                    quiz.id,
+                                                    quizContractAddress,
+                                                    classItem.classAddress,
+                                                    quiz.title
+                                                  )
+                                                }
+                                                className="text-xs"
+                                              >
+                                                View Results
+                                              </Button>
+                                              {quiz.isActive && (
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() =>
+                                                    handleDeactivateQuiz(
+                                                      quiz.id,
+                                                      quizContractAddress
+                                                    )
+                                                  }
+                                                  className="text-xs"
+                                                >
+                                                  Deactivate
+                                                </Button>
+                                              )}
+                                            </div>
                                           </div>
                                         </div>
-                                        <div className="flex flex-row sm:flex-col gap-2 mt-2 sm:mt-0">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleViewQuizResults(quiz.id, quizContractAddress, classItem.classAddress, quiz.title)}
-                                            className="text-xs"
-                                          >
-                                            View Results
-                                          </Button>
-                                          {quiz.isActive && (
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              onClick={() => handleDeactivateQuiz(quiz.id, quizContractAddress)}
-                                              className="text-xs"
-                                            >
-                                              Deactivate
-                                            </Button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="text-center p-4 text-gray-500">
-                                  No quizzes available for this contract.
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        ))
+                                      )
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="text-center p-4 text-gray-500">
+                                    No quizzes available for this contract.
+                                  </div>
+                                )}
+                              </CardContent>
+                            </Card>
+                          )
+                        )
                       ) : (
                         <div className="text-center p-4 text-gray-500">
                           No quiz contracts linked to this class yet.
