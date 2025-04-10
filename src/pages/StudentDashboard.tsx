@@ -7,13 +7,14 @@ import { getEligibleClasses, getLectures, getOwnAttendance, markAttendance, getQ
 import { useWalletContext } from "@/context/WalletContext";
 import Popup from "../components/Popup";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, FilePieChart, FileText, QrCode } from "lucide-react";
+import { BookOpen, FilePieChart, FileText, QrCode, CheckCircle } from "lucide-react";
 import TakeQuizForm from "../components/TakeQuizForm";
 import QuizResults from "../components/QuizResults";
 import UploadNotesForm from "../components/UploadNotesForm";
 import NotesMarketplace from "../components/NotesMarketplace";
 import MyNotes from "../components/MyNotes";
 import QRScanner from "../components/QRScanner";
+import { LoaderCircle } from "lucide-react";
 
 interface Class {
   classAddress: string;
@@ -523,7 +524,7 @@ export function StudentDashboard() {
             <CardContent>
               <UploadNotesForm 
                 lectures={lecturesByClass[selectedClass.classAddress] || []}
-                notesContractAddress={notesContractAddress}
+                notesContractAddress={notesContractsByClass[selectedClass.classAddress]}
                 onSuccess={() => {
                   setConfirmationMessage("Notes uploaded successfully! They will be reviewed by the instructor.");
                 }}
@@ -687,135 +688,191 @@ export function StudentDashboard() {
 
   // Render
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">Student Dashboard</h1>
+    <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+        <div className="mb-4 md:mb-0">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-transparent bg-clip-text">Student Dashboard</h1>
+          <p className="text-gray-500 mt-1">View your classes, attendance, and quizzes</p>
+        </div>
+        <Button 
+          onClick={openQRScanner}
+          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+        >
+          <QrCode className="h-4 w-4 mr-2" />
+          Scan Attendance QR
+        </Button>
+      </div>
       
       {isLoadingInitialData ? (
-        <div className="flex justify-center items-center h-64">
-          <p>Loading classes...</p>
+        <div className="flex flex-col items-center justify-center h-64 bg-gray-50 rounded-lg border border-gray-100">
+          <LoaderCircle className="h-8 w-8 text-blue-600 animate-spin mb-2" />
+          <p className="text-gray-600">Loading classes...</p>
         </div>
       ) : (
         <>
-          <div className="mb-6">
-            <label htmlFor="classSelect" className="block text-sm font-medium mb-2">
-              Select Class
-            </label>
-            <select
-              id="classSelect"
-              className="w-full md:w-1/2 p-2 border rounded-md"
-              value={selectedClass ? selectedClass.classAddress : ""}
-              onChange={(e) => {
-                const selectedClassObj = classes.find(
-                  (c) => c.classAddress === e.target.value
-                );
-                setSelectedClass(selectedClassObj || null);
-              }}
-            >
-              <option value="">Select a class</option>
-              {classes.map((classItem) => (
-                <option key={classItem.classAddress} value={classItem.classAddress}>
-                  {classItem.name} ({classItem.symbol})
-                </option>
-              ))}
-            </select>
-          </div>
-
           {confirmationMessage && (
-            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-              {confirmationMessage}
+            <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6 rounded-md shadow-sm">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-green-700">{confirmationMessage}</p>
+                </div>
+              </div>
             </div>
           )}
 
-          {selectedClass && (
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="mb-8">
-                <TabsTrigger value="attendance">
-                  <BookOpen className="mr-2 h-4 w-4" />
-                  Attendance
-                </TabsTrigger>
-                <TabsTrigger value="quizzes">
-                  <FilePieChart className="mr-2 h-4 w-4" />
-                  Quizzes
-                </TabsTrigger>
-                <TabsTrigger value="notes">
-                  <FileText className="mr-2 h-4 w-4" />
-                  Notes
-                </TabsTrigger>
-              </TabsList>
+          {classes.length > 0 ? (
+            <>
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">My Classes</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {classes.map((classItem) => (
+                    <div 
+                      key={classItem.classAddress}
+                      onClick={() => setSelectedClass(classItem)}
+                      className={`bg-white rounded-lg border cursor-pointer transition-all duration-200 overflow-hidden ${
+                        selectedClass?.classAddress === classItem.classAddress 
+                          ? 'border-blue-500 ring-2 ring-blue-200 shadow-md' 
+                          : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                      }`}
+                    >
+                      <div className={`h-2 w-full ${
+                        selectedClass?.classAddress === classItem.classAddress 
+                          ? 'bg-blue-500' 
+                          : 'bg-gray-200'
+                      }`}></div>
+                      <div className="p-4">
+                        <h3 className="font-medium text-lg text-gray-900">{classItem.name}</h3>
+                        <div className="flex items-center mt-1">
+                          <span className="text-xs bg-gray-100 rounded px-2 py-1 text-gray-600">
+                            {classItem.symbol}
+                          </span>
+                        </div>
+                        <div className="mt-3 text-sm text-gray-500 truncate font-mono">
+                          {classItem.classAddress.slice(0, 10)}...{classItem.classAddress.slice(-8)}
+                        </div>
+                        {selectedClass?.classAddress === classItem.classAddress && (
+                          <div className="mt-3 text-xs text-blue-600 font-medium">
+                            Currently Selected
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-              <TabsContent value="attendance">
-                <div className="grid grid-cols-1 gap-6">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold">Attendance</h2>
-                    <Button onClick={openQRScanner}>
-                      <QrCode className="mr-2 h-4 w-4" />
-                      Scan QR Code
-                    </Button>
-                  </div>
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Lectures</CardTitle>
-                    </CardHeader>
-                    <CardContent>
+              {selectedClass ? (
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                  <TabsList className="w-full rounded-none justify-start px-6 pt-4 bg-white border-b">
+                    <TabsTrigger value="attendance" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
+                      <BookOpen className="mr-2 h-4 w-4" />
+                      Attendance
+                    </TabsTrigger>
+                    <TabsTrigger value="quizzes" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
+                      <FilePieChart className="mr-2 h-4 w-4" />
+                      Quizzes
+                    </TabsTrigger>
+                    <TabsTrigger value="notes" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
+                      <FileText className="mr-2 h-4 w-4" />
+                      Notes
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="attendance" className="p-6">
+                    <div className="space-y-6">
+                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <h2 className="text-xl font-semibold text-gray-900">Attendance Records</h2>
+                        <Button 
+                          onClick={openQRScanner}
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <QrCode className="mr-2 h-4 w-4" />
+                          Scan QR Code
+                        </Button>
+                      </div>
+
                       {isFetchingLectures[selectedClass.classAddress] ? (
-                        <p>Loading lectures...</p>
+                        <div className="flex items-center justify-center h-40">
+                          <LoaderCircle className="h-6 w-6 text-blue-600 animate-spin mr-2" />
+                          <span className="text-gray-600">Loading lectures...</span>
+                        </div>
                       ) : lecturesByClass[selectedClass.classAddress]?.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {lecturesByClass[selectedClass.classAddress].map((lecture) => (
-                            <Card key={lecture.id} className="overflow-hidden">
-                              <CardHeader className="pb-2">
-                                <CardTitle className="text-lg">{lecture.topic}</CardTitle>
-                              </CardHeader>
-                              <CardContent className="pb-2">
-                                <p className="text-sm">
-                                  Lecture ID: {lecture.id}
-                                </p>
-                              </CardContent>
-                              <div className="p-4 pt-0 flex justify-end">
-                                {attendanceByClass[selectedClass.classAddress]?.[
-                                  lecture.id - 1
-                                ] ? (
-                                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                                    Attended
+                            <div key={lecture.id} className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                              <div className="p-4">
+                                <h3 className="font-medium text-lg text-gray-900 mb-2">{lecture.topic}</h3>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-500">
+                                    Lecture ID: {lecture.id}
                                   </span>
-                                ) : (
-                                  <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm">
-                                    Not Attended
-                                  </span>
-                                )}
+                                  {attendanceByClass[selectedClass.classAddress]?.[lecture.id - 1] ? (
+                                    <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                                      Attended
+                                    </span>
+                                  ) : (
+                                    <span className="px-3 py-1.5 bg-red-100 text-red-800 rounded-full text-xs font-medium">
+                                      Not Attended
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </Card>
+                            </div>
                           ))}
                         </div>
                       ) : (
-                        <p>No lectures found for this class.</p>
+                        <div className="text-center p-8 bg-gray-50 rounded-lg border border-dashed border-gray-200 text-gray-500">
+                          <BookOpen className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                          <p>No lectures found for this class.</p>
+                          <p className="text-sm mt-1">Lecture information will appear once your teacher creates them.</p>
+                        </div>
                       )}
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
+                    </div>
+                  </TabsContent>
 
-              <TabsContent value="quizzes">
-                <div className="grid grid-cols-1 gap-6">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold">Quizzes</h2>
-                    <Button
-                      variant="outline"
-                      onClick={() => refreshQuizzes(selectedClass.classAddress)}
-                    >
-                      Refresh Quizzes
-                    </Button>
+                  <TabsContent value="quizzes" className="p-6">
+                    <div className="space-y-6">
+                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <h2 className="text-xl font-semibold text-gray-900">Quizzes</h2>
+                        <Button
+                          variant="outline"
+                          onClick={() => refreshQuizzes(selectedClass.classAddress)}
+                          className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                        >
+                          Refresh Quizzes
+                        </Button>
+                      </div>
+                      {renderQuizzes(selectedClass.classAddress)}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="notes" className="p-6">
+                    <div className="space-y-6">
+                      {renderNotesTabs()}
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                  <div className="text-center p-8">
+                    <BookOpen className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                    <p className="text-gray-600 font-medium">Please Select a Class</p>
+                    <p className="text-sm text-gray-500 mt-1">Click on any class card above to view details.</p>
                   </div>
-                  {renderQuizzes(selectedClass.classAddress)}
                 </div>
-              </TabsContent>
-
-              <TabsContent value="notes">
-                <div className="grid grid-cols-1 gap-6">
-                  {renderNotesTabs()}
-                </div>
-              </TabsContent>
-            </Tabs>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+              <div className="text-center p-8">
+                <BookOpen className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                <p className="text-gray-600 font-medium">No Classes Found</p>
+                <p className="text-sm text-gray-500 mt-1">You are not enrolled in any classes yet.</p>
+              </div>
+            </div>
           )}
         </>
       )}
