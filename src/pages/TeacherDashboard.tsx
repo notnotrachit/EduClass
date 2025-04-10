@@ -18,7 +18,9 @@ import {
   deactivateQuiz,
   deployQuizContract,
   linkQuizToClass,
-  getClassQuizzes
+  getClassQuizzes,
+  getNotesContractForClass,
+  createNotesContract
 } from "@/lib/contractService";
 import { useWalletContext } from "@/context/WalletContext";
 import QRious from "qrious";
@@ -28,7 +30,8 @@ import StudentForm from "../components/StudentForm";
 import CreateClassForm from "../components/CreateClassForm";
 import CreateQuizForm from "../components/CreateQuizForm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusCircle, GraduationCap, BookOpen, Edit, Eye, FilePieChart, Link } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { PlusCircle, GraduationCap, BookOpen, Edit, Eye, FilePieChart, Link, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ethers } from "ethers";
@@ -92,6 +95,10 @@ interface QuizResultsByStudent {
   attemptedAt: number;
 }
 
+interface NotesContractsByClass {
+  [classAddress: string]: string;
+}
+
 export function TeacherDashboard() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [confirmationMessage, setConfirmationMessage] = useState("");
@@ -133,6 +140,10 @@ export function TeacherDashboard() {
   }>({});
   const [newQuizContractAddress, setNewQuizContractAddress] = useState("");
 
+  // Notes related state
+  const [notesContractsByClass, setNotesContractsByClass] = useState<NotesContractsByClass>({});
+  const [isCreatingNotesContract, setIsCreatingNotesContract] = useState(false);
+
   const { provider, address } = useWalletContext();
 
   useEffect(() => {
@@ -164,6 +175,19 @@ export function TeacherDashboard() {
             }
           } catch (error) {
             console.error(`Error fetching quiz contracts for class ${classItem.classAddress}:`, error);
+          }
+          
+          // Get notes contract for this class
+          try {
+            const notesContract = await getNotesContractForClass(classItem.classAddress, provider);
+            if (notesContract && notesContract !== '0x0000000000000000000000000000000000000000') {
+              setNotesContractsByClass((prev) => ({
+                ...prev,
+                [classItem.classAddress]: notesContract
+              }));
+            }
+          } catch (error) {
+            console.error(`Error fetching notes contract for class ${classItem.classAddress}:`, error);
           }
         }
       } catch (error) {
@@ -790,11 +814,86 @@ export function TeacherDashboard() {
     setIsPopupOpen(true);
   };
 
+  const handleCreateNotesContract = async (classAddress: string, className: string) => {
+    try {
+      setIsCreatingNotesContract(true);
+      
+      const notesContractAddress = await createNotesContract(address, className, classAddress, provider);
+      
+      if (notesContractAddress) {
+        setNotesContractsByClass((prev) => ({
+          ...prev,
+          [classAddress]: notesContractAddress
+        }));
+        
+        setConfirmationMessage("Notes contract created successfully!");
+      } else {
+        setConfirmationMessage("Failed to create notes contract. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error creating notes contract:", error);
+      setConfirmationMessage("Failed to create notes contract. Please try again.");
+    } finally {
+      setIsCreatingNotesContract(false);
+    }
+  };
+
+  const renderNotesSection = (classAddress: string, className: string) => {
+    const notesContractAddress = notesContractsByClass[classAddress];
+    
+    if (!notesContractAddress) {
+      return (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-medium">Notes Management</h3>
+            <Button 
+              onClick={() => handleCreateNotesContract(classAddress, className)}
+              disabled={isCreatingNotesContract}
+            >
+              {isCreatingNotesContract ? "Creating..." : "Create Notes Contract"}
+            </Button>
+          </div>
+          <p className="text-muted-foreground">
+            Create a Notes contract to enable students to upload and share their notes as NFTs.
+          </p>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-medium">Notes Management</h3>
+          <p className="text-sm text-green-600">Notes enabled</p>
+        </div>
+        
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle>Student Notes</CardTitle>
+              <Badge variant="outline">
+                Contract: {notesContractAddress.slice(0, 6)}...{notesContractAddress.slice(-4)}
+              </Badge>
+            </div>
+            <CardDescription>
+              Students can share and purchase notes directly from each other
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Notes sharing is enabled for this class.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-semibold">Teacher Dashboard</h1>
-        <Button onClick={openCreateClassForm}>Create New Class</Button>
+        <Button onClick={openCreateClassForm}>
+          <PlusCircle className="h-4 w-4 mr-2" /> New Class
+        </Button>
       </div>
 
       {confirmationMessage && (
@@ -804,231 +903,242 @@ export function TeacherDashboard() {
       )}
 
       {isLoadingInitialData ? (
-        <div className="text-center p-10">Loading classes...</div>
+        <div className="text-center p-10">Loading your classes...</div>
       ) : classes.length === 0 ? (
         <div className="text-center p-10">
-          <p className="mb-4">No classes found. Create your first class to get started.</p>
-          <Button onClick={openCreateClassForm}>Create New Class</Button>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <GraduationCap className="mx-auto h-12 w-12 text-primary mb-4" />
+            <h2 className="text-xl font-semibold mb-2">
+              Create Your First Class
+            </h2>
+            <p className="text-gray-500 mb-4">
+              Get started by creating your first class to manage students and
+              take attendance.
+            </p>
+            <Button onClick={openCreateClassForm}>
+              <PlusCircle className="h-4 w-4 mr-2" /> Create Class
+            </Button>
+          </motion.div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {classes.map((classItem) => (
+        <div className="grid grid-cols-1 gap-6">
+          {classes.map((classItem, index) => (
             <Card key={classItem.classAddress} className="overflow-hidden">
-              <CardHeader className="bg-gray-50">
+              <CardHeader>
                 <CardTitle>{classItem.name}</CardTitle>
-                </CardHeader>
-              <CardContent className="p-0">
-                <Tabs defaultValue="lectures">
+                <CardDescription>
+                  Class Address: {classItem.classAddress}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Tabs defaultValue="students">
                   <TabsList className="w-full">
-                    <TabsTrigger value="lectures" className="flex-1">
-                      <BookOpen className="h-4 w-4 mr-2" /> Lectures
-                    </TabsTrigger>
                     <TabsTrigger value="students" className="flex-1">
                       <GraduationCap className="h-4 w-4 mr-2" /> Students
+                    </TabsTrigger>
+                    <TabsTrigger value="lectures" className="flex-1">
+                      <BookOpen className="h-4 w-4 mr-2" /> Lectures & Attendance
                     </TabsTrigger>
                     <TabsTrigger value="quizzes" className="flex-1">
                       <FilePieChart className="h-4 w-4 mr-2" /> Quizzes
                     </TabsTrigger>
+                    <TabsTrigger value="notes" className="flex-1">
+                      <FileText className="h-4 w-4 mr-2" /> Notes
+                    </TabsTrigger>
                   </TabsList>
-                  
-                  <TabsContent value="lectures" className="p-4">
-                    <div className="mb-4">
-                      <div className="flex items-center space-x-2 mb-2">
-                    <input
-                      type="text"
-                          className="border rounded p-2 flex-1"
-                      value={lectureTopicsByClass[classItem.classAddress] || ""}
-                      onChange={(e) =>
-                        setLectureTopicsByClass((prev) => ({
-                          ...prev,
-                          [classItem.classAddress]: e.target.value,
-                        }))
-                      }
-                          placeholder="Lecture Topic"
-                    />
+
+                  <TabsContent value="students" className="pt-4">
                     <Button
-                          onClick={() => handleCreateLecture(classItem.classAddress)}
-                      disabled={isCreatingLecture[classItem.classAddress]}
-                    >
-                      {isCreatingLecture[classItem.classAddress]
-                        ? "Creating..."
-                            : "Create"}
-                    </Button>
-                      </div>
-                    </div>
-                    
-                    <Button
-                      onClick={() => fetchLectures(classItem.classAddress)}
-                      disabled={isFetchingLectures[classItem.classAddress]}
+                      onClick={() => openMintForm(classItem.classAddress)}
                       variant="outline"
                       className="w-full mb-4"
                     >
-                      {isFetchingLectures[classItem.classAddress]
-                        ? "Loading lectures..."
-                        : "Load Lectures"}
+                      <PlusCircle className="h-4 w-4 mr-2" /> Add Student
                     </Button>
-                    
-                    {lecturesByClass[classItem.classAddress]?.length > 0 ? (
-                      <div className="space-y-3">
-                        {lecturesByClass[classItem.classAddress].map((lecture) => (
-                      <div
-                        key={lecture.id}
-                            className="p-3 border rounded hover:bg-gray-50"
-                          >
-                            <div className="flex justify-between items-center">
-                              <div>
-                                <h3 className="font-medium">{lecture.topic}</h3>
-                                <p className="text-sm text-gray-500">ID: {lecture.id}</p>
+                  </TabsContent>
+
+                  <TabsContent value="lectures" className="pt-4">
+                    <div className="space-y-4">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Enter lecture topic..."
+                          value={
+                            lectureTopicsByClass[classItem.classAddress] || ""
+                          }
+                          onChange={(e) =>
+                            setLectureTopicsByClass((prev) => ({
+                              ...prev,
+                              [classItem.classAddress]: e.target.value,
+                            }))
+                          }
+                        />
+                        <Button
+                          onClick={() =>
+                            handleCreateLecture(classItem.classAddress)
+                          }
+                          disabled={
+                            isCreatingLecture[classItem.classAddress] ||
+                            !lectureTopicsByClass[classItem.classAddress]
+                          }
+                        >
+                          {isCreatingLecture[classItem.classAddress]
+                            ? "Creating..."
+                            : "Create Lecture"}
+                        </Button>
+                      </div>
+
+                      <Button
+                        onClick={() => fetchLectures(classItem.classAddress)}
+                        disabled={isFetchingLectures[classItem.classAddress]}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        {isFetchingLectures[classItem.classAddress]
+                          ? "Loading lectures..."
+                          : "Refresh Lectures"}
+                      </Button>
+
+                      {lecturesByClass[classItem.classAddress]?.length > 0 ? (
+                        <div className="space-y-3">
+                          {lecturesByClass[classItem.classAddress].map(
+                            (lecture) => (
+                              <div
+                                key={lecture.id}
+                                className="p-3 border rounded"
+                              >
+                                <div className="flex justify-between items-center">
+                                  <div>
+                                    <h3 className="font-medium">
+                                      {lecture.topic}
+                                    </h3>
+                                    <p className="text-sm text-gray-500">
+                                      ID: {lecture.id}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleTakeAttendance(
+                                          lecture.id,
+                                          classItem.classAddress
+                                        )
+                                      }
+                                    >
+                                      <QRious className="h-4 w-4 mr-1" /> QR Code
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleViewAttendance(
+                                          lecture.id,
+                                          classItem.classAddress
+                                        )
+                                      }
+                                    >
+                                      <Eye className="h-4 w-4 mr-1" /> View
+                                      Attendance
+                                    </Button>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="flex space-x-2">
+                            )
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center p-4 text-gray-500">
+                          No lectures available for this class.
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="quizzes" className="pt-4">
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+                        <h3 className="text-lg font-medium">Quiz Management</h3>
+                        <div className="flex flex-col gap-2 sm:flex-row">
                           <Button
-                            onClick={() =>
-                                    handleTakeAttendance(lecture.id, classItem.classAddress)
-                            }
-                                  size="sm"
-                                  variant="outline"
+                            variant="outline"
+                            onClick={() => refreshQuizContracts(classItem.classAddress)}
+                            className="w-full sm:w-auto"
                           >
-                            Take Attendance
+                            Refresh Quiz Contracts
                           </Button>
-                          <Button
-                            onClick={() =>
-                                    handleViewAttendance(lecture.id, classItem.classAddress)
-                            }
-                                  size="sm"
-                                  variant="outline"
+                          <Button 
+                            variant="outline"
+                            onClick={() => openLinkQuizContractForm(classItem.classAddress)}
+                            className="w-full sm:w-auto"
                           >
-                            View Attendance
+                            <Link className="h-4 w-4 mr-2" /> Link Quiz Contract
                           </Button>
                         </div>
                       </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center p-4 text-gray-500">
-                        No lectures found for this class.
-                      </div>
-                    )}
-                  </TabsContent>
-                  
-                  <TabsContent value="students" className="p-4">
-                    <Button
-                      onClick={() => openMintForm(classItem.classAddress)}
-                      className="w-full mb-4"
-                    >
-                      Add Student
-                    </Button>
-                  </TabsContent>
-                  
-                  <TabsContent value="quizzes" className="p-4">
-                    <div className="flex space-x-2 mb-4">
-                      <Button
-                        onClick={() => openLinkQuizContractForm(classItem.classAddress)}
-                        className="flex-1 flex items-center justify-center gap-2"
-                      >
-                        <Link className="h-4 w-4" /> Link Quiz Contract
-                      </Button>
-                      <Button
-                        onClick={() => refreshQuizContracts(classItem.classAddress)}
-                        variant="outline"
-                        className="flex items-center gap-1"
-                      >
-                        Refresh
-                      </Button>
-                    </div>
-                    
-                    {quizContractsByClass[classItem.classAddress]?.length > 0 ? (
-                      <div className="space-y-6">
-                        {quizContractsByClass[classItem.classAddress].map((quizContractAddress) => (
-                          <div key={quizContractAddress} className="space-y-3">
-                            <div className="flex justify-between items-center">
-                              <h3 className="text-sm font-semibold text-gray-500">
-                                Contract: {quizContractAddress.substring(0, 6)}...{quizContractAddress.substring(38)}
-                              </h3>
-                              <Button
-                                onClick={() => openCreateQuizForm(quizContractAddress, classItem.classAddress)}
-                                size="sm"
-                                className="flex items-center gap-1"
-                              >
-                                <PlusCircle className="h-3 w-3" /> Add Quiz
-                              </Button>
-                            </div>
-                            
-                            <Button
-                              onClick={() => fetchQuizzes(quizContractAddress)}
-                              disabled={isFetchingQuizzes[quizContractAddress]}
-                              variant="outline"
-                              size="sm"
-                              className="w-full mb-2"
-                            >
-                              {isFetchingQuizzes[quizContractAddress]
-                                ? "Loading quizzes..."
-                                : "Load Quizzes"}
-                            </Button>
-                            
-                            {quizzesByContract[quizContractAddress]?.length > 0 ? (
-                              <div className="space-y-3 pl-2 border-l-2 border-gray-200">
-                                {quizzesByContract[quizContractAddress].map((quiz) => {
-                                  const isExpired = Date.now() > quiz.expiresAt;
-                                  const lectureInfo = lecturesByClass[classItem.classAddress]?.find(
-                                    (l) => l.id === quiz.lectureId
-                                  );
-                                  
-                                  return (
-                                    <div
-                                      key={quiz.id}
-                                      className={`p-3 border rounded hover:bg-gray-50 ${
-                                        !quiz.isActive || isExpired ? 'opacity-70' : ''
-                                      }`}
-                                    >
-                                      <div className="space-y-2">
-                                        <div className="flex justify-between">
-                                          <h3 className="font-medium">{quiz.title}</h3>
-                                          {quiz.isActive ? (
-                                            <span className={`text-xs px-2 py-1 rounded-full ${
-                                              isExpired ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                                            }`}>
-                                              {isExpired ? 'Expired' : 'Active'}
-                                            </span>
-                                          ) : (
-                                            <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-800">
-                                              Inactive
-                                            </span>
-                                          )}
+                      
+                      {(quizContractsByClass[classItem.classAddress]?.length > 0) ? (
+                        quizContractsByClass[classItem.classAddress].map((quizContractAddress) => (
+                          <Card key={quizContractAddress}>
+                            <CardHeader className="pb-2">
+                              <div className="flex justify-between items-center">
+                                <CardTitle className="text-base">Quiz Contract</CardTitle>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openCreateQuizForm(quizContractAddress, classItem.classAddress)}
+                                  >
+                                    <PlusCircle className="h-3 w-3 mr-1" /> Create Quiz
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fetchQuizzes(quizContractAddress)}
+                                    disabled={isFetchingQuizzes[quizContractAddress]}
+                                  >
+                                    {isFetchingQuizzes[quizContractAddress] ? "Refreshing..." : "Refresh Quizzes"}
+                                  </Button>
+                                </div>
+                              </div>
+                              <CardDescription className="text-xs mt-1 break-all">
+                                {quizContractAddress}
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                              {quizzesByContract[quizContractAddress]?.length > 0 ? (
+                                <div className="space-y-3">
+                                  {quizzesByContract[quizContractAddress].map((quiz) => (
+                                    <div key={quiz.id} className="p-3 border rounded">
+                                      <div className="flex flex-col sm:flex-row justify-between">
+                                        <div>
+                                          <h4 className="font-medium">{quiz.title}</h4>
+                                          <p className="text-sm">{quiz.description}</p>
+                                          <div className="text-xs text-gray-500 mt-1">
+                                            <div>Questions: {quiz.questionCount}</div>
+                                            <div>Expires: {new Date(quiz.expiresAt * 1000).toLocaleString()}</div>
+                                            <div>Status: {quiz.isActive ? 'Active' : 'Inactive'}</div>
+                                          </div>
                                         </div>
-                                        
-                                        <p className="text-sm">{quiz.description}</p>
-                                        
-                                        <div className="text-xs text-gray-500">
-                                          <div>Questions: {quiz.questionCount}</div>
-                                          <div>Lecture: {lectureInfo?.topic || quiz.lectureId}</div>
-                                          <div>Expires: {new Date(quiz.expiresAt).toLocaleString()}</div>
-                                        </div>
-                                        
-                                        <div className="flex space-x-2 pt-2">
+                                        <div className="flex flex-row sm:flex-col gap-2 mt-2 sm:mt-0">
                                           <Button
-                                            onClick={() => handleViewQuizResults(
-                                              quiz.id,
-                                              quizContractAddress,
-                                              classItem.classAddress,
-                                              quiz.title
-                                            )}
-                                            size="sm"
                                             variant="outline"
-                                            className="flex items-center gap-1"
+                                            size="sm"
+                                            onClick={() => handleViewQuizResults(quiz.id, quizContractAddress, classItem.classAddress, quiz.title)}
+                                            className="text-xs"
                                           >
-                                            <Eye className="h-3 w-3" /> Results
+                                            View Results
                                           </Button>
-                                          
                                           {quiz.isActive && (
                                             <Button
-                                              onClick={() => handleDeactivateQuiz(
-                                                quiz.id,
-                                                quizContractAddress
-                                              )}
+                                              variant="outline"
                                               size="sm"
-                                              variant="destructive"
-                                              className="flex items-center gap-1"
+                                              onClick={() => handleDeactivateQuiz(quiz.id, quizContractAddress)}
+                                              className="text-xs"
                                             >
                                               Deactivate
                                             </Button>
@@ -1036,26 +1146,30 @@ export function TeacherDashboard() {
                                         </div>
                                       </div>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="text-center p-3 text-gray-500 text-sm">
-                                No quizzes found for this contract.
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center p-4 text-gray-500">
-                        No quiz contracts linked to this class.
-                      </div>
-                    )}
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-center p-4 text-gray-500">
+                                  No quizzes available for this contract.
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        ))
+                      ) : (
+                        <div className="text-center p-4 text-gray-500">
+                          No quiz contracts linked to this class yet.
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="notes" className="pt-4">
+                    {renderNotesSection(classItem.classAddress, classItem.name)}
                   </TabsContent>
                 </Tabs>
-                </CardContent>
-              </Card>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

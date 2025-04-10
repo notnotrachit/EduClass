@@ -6,11 +6,15 @@ import ClassContract from './contracts/ClassContract.sol/ClassContract.json';
 // The actual paths should be something like:
 import QuizContract from './contracts/QuizContract.sol/QuizContract.json';
 import QuizContractFactory from './contracts/QuizContractFactory.sol/QuizContractFactory.json';
+import NotesFactory from './contracts/NotesContract.sol/NotesFactory.json';
+import NotesContract from './contracts/NotesContract.sol/NotesContract.json';
 
 
 const CONTRACT_ADDRESS = '0x21f06dEA00f63464733FcEE46E7721b949a4B6B2';
 // TODO: Update this with the actual QuizContractFactory address after deployment
 const QUIZ_FACTORY_ADDRESS = '0xDEe3817700f5E4BBc3EEf2Ba224597E87468AD52';
+// TODO: Update this with the actual NotesFactory address after deployment
+const NOTES_FACTORY_ADDRESS = '0x43BBB6A952D3a4097c8A9aeE1c40282F8ADBadEF';
 
 export const createClass = async (name: string, symbol: string, provider: ethers.providers.Web3Provider) => {
     const signer = provider.getSigner();
@@ -377,4 +381,247 @@ export const deactivateQuiz = async (
     const quizContract = new ethers.Contract(quizContractAddress, QuizContract.abi, signer);
     const tx = await quizContract.deactivateQuiz(quizId);
     await tx.wait();
+};
+
+// Notes functionality
+
+export const createNotesContract = async (
+    ownerAddress: string,
+    className: string,
+    classAddress: string,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesFactoryContract = new ethers.Contract(NOTES_FACTORY_ADDRESS, NotesFactory.abi, signer);
+    const tx = await notesFactoryContract.createNotesContract(ownerAddress, className, classAddress);
+    const receipt = await tx.wait();
+    
+    // Find the NotesContractCreated event to get the notes contract address
+    const event = receipt.events?.find((e: any) => e.event === 'NotesContractCreated');
+    return event?.args?.notesContractAddress || null;
+};
+
+export const getNotesContracts = async (provider: ethers.providers.Web3Provider) => {
+    const signer = provider.getSigner();
+    const notesFactoryContract = new ethers.Contract(NOTES_FACTORY_ADDRESS, NotesFactory.abi, signer);
+    const contracts = await notesFactoryContract.getNotesContracts();
+    
+    return contracts.map((contract: any) => ({
+        contractAddress: contract.contractAddress,
+        owner: contract.owner,
+        className: contract.className,
+        createdAt: contract.createdAt.toNumber()
+    }));
+};
+
+export const getOwnerNotesContracts = async (
+    ownerAddress: string,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesFactoryContract = new ethers.Contract(NOTES_FACTORY_ADDRESS, NotesFactory.abi, signer);
+    return await notesFactoryContract.getOwnerNotesContracts(ownerAddress);
+};
+
+export const getNotesContractForClass = async (
+    classAddress: string,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesFactoryContract = new ethers.Contract(NOTES_FACTORY_ADDRESS, NotesFactory.abi, signer);
+    return await notesFactoryContract.getNotesContractForClass(classAddress);
+};
+
+export const createNote = async (
+    notesContractAddress: string,
+    title: string,
+    description: string,
+    ipfsHash: string,
+    price: string,
+    lectureId: number,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    
+    // Convert price to wei
+    const priceInWei = ethers.utils.parseEther(price);
+    
+    const tx = await notesContract.createNote(title, description, ipfsHash, priceInWei, lectureId);
+    const receipt = await tx.wait();
+    
+    // Find the NoteCreated event to get the note ID
+    const event = receipt.events?.find((e: any) => e.event === 'NoteCreated');
+    return event?.args?.noteId.toNumber() || null;
+};
+
+export const approveNote = async (
+    notesContractAddress: string,
+    noteId: number,
+    approved: boolean,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    const tx = await notesContract.approveNote(noteId, approved);
+    await tx.wait();
+};
+
+export const purchaseNote = async (
+    notesContractAddress: string,
+    noteId: number,
+    price: string,
+    provider: ethers.providers.Web3Provider
+) => {
+    console.log('Purchasing note with ID:', noteId);
+    console.log('Price:', price);
+
+    if (!price) {
+        throw new Error('Price is required');
+    }
+
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    
+    try {
+        // Get current note details to verify price
+        const noteDetails = await notesContract.getNoteDetails(noteId);
+        const correctPrice = ethers.utils.formatEther(noteDetails.price);
+        
+        console.log('Note price from contract:', correctPrice);
+        console.log('Price provided:', price);
+        
+        // Use the price from the contract
+        const tx = await notesContract.purchaseNote(noteId, { value: noteDetails.price });
+        await tx.wait();
+    } catch (error) {
+        console.error('Error in purchaseNote:', error);
+        throw new Error(error instanceof Error ? error.message : 'Failed to purchase note');
+    }
+};
+
+export const updateNotePrice = async (
+    notesContractAddress: string,
+    noteId: number,
+    newPrice: string,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    
+    // Convert price to wei
+    const priceInWei = ethers.utils.parseEther(newPrice);
+    
+    const tx = await notesContract.updateNotePrice(noteId, priceInWei);
+    await tx.wait();
+};
+
+export const hasPurchasedNote = async (
+    notesContractAddress: string,
+    noteId: number,
+    userAddress: string,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    return await notesContract.hasPurchasedNote(userAddress, noteId);
+};
+
+export const getNoteSales = async (
+    notesContractAddress: string,
+    noteId: number,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    const sales = await notesContract.getNoteSales(noteId);
+    return sales.toNumber();
+};
+
+export const getAllNotes = async (
+    notesContractAddress: string,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    const noteIds = await notesContract.getAllNotes();
+    
+    // Convert BigNumber IDs to regular numbers
+    return noteIds.map((id: any) => id.toNumber());
+};
+
+export const getApprovedNotes = async (
+    notesContractAddress: string,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    const noteIds = await notesContract.getApprovedNotes();
+    console.log('Approved note IDs:', noteIds);
+    
+    // Convert BigNumber IDs to regular numbers
+    return noteIds;
+};
+
+export const getNotesForLecture = async (
+    notesContractAddress: string,
+    lectureId: number,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    const noteIds = await notesContract.getNotesForLecture(lectureId);
+    
+    // Convert BigNumber IDs to regular numbers
+    return noteIds.map((id: any) => id.toNumber());
+};
+
+export const getNoteDetails = async (
+    notesContractAddress: string,
+    noteId: any,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    const details = await notesContract.getNoteDetails(noteId);
+    console.log('Note details1:', details);
+    
+    return {
+        id: noteId,
+        title: details.title,
+        description: details.description,
+        ipfsHash: details.ipfsHash,
+        creator: details.creator,
+        price: ethers.utils.formatEther(details.price),
+        createdAt: details.createdAt,
+        lectureId: details.lectureId,
+        isApproved: details.isApproved,
+        salesCount: details.salesCount
+    };
+};
+
+export const getCreatedNotes = async (
+    notesContractAddress: string,
+    creatorAddress: string,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    const noteIds = await notesContract.getCreatedNotes(creatorAddress);
+    
+    // Convert BigNumber IDs to regular numbers
+    return noteIds.map((id: any) => id.toNumber());
+};
+
+export const getPurchasedNotes = async (
+    notesContractAddress: string,
+    buyerAddress: string,
+    provider: ethers.providers.Web3Provider
+) => {
+    const signer = provider.getSigner();
+    const notesContract = new ethers.Contract(notesContractAddress, NotesContract.abi, signer);
+    const noteIds = await notesContract.getPurchasedNotes(buyerAddress);
+    
+    // Convert BigNumber IDs to regular numbers
+    return noteIds.map((id: any) => id.toNumber());
 };
